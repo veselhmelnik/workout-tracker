@@ -1,0 +1,392 @@
+import { Button } from '@/components/ui/Button'
+import { Divider, SectionLabel, TextField } from '@/components/ui/Fields'
+import { ScreenHeader } from '@/components/ui/ScreenHeader'
+import { colors, fontSize, gutter, radius, spacing } from '@/constants/theme'
+import type { Exercise, ExerciseType } from '@/types/entities'
+import { formatSetTarget } from '@/utils/format'
+import { useState } from 'react'
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
+import { SafeAreaView } from 'react-native-safe-area-context'
+import {
+  ExerciseConfigModal,
+  type ExerciseConfig,
+} from './ExerciseConfigModal'
+import { ExercisePickerModal } from './ExercisePickerModal'
+
+/** One exercise inside the workout template being edited. */
+export type DraftExercise = {
+  exerciseId: string
+  name: string
+  type: ExerciseType
+  sets: number
+  repMin: number | null
+  repMax: number | null
+}
+
+export type WorkoutDraft = {
+  name: string
+  exercises: DraftExercise[]
+}
+
+type EditorTarget =
+  | { kind: 'new'; exercise: Exercise }
+  | { kind: 'existing'; index: number }
+
+type WorkoutEditorProps = {
+  title: string
+  initialDraft: WorkoutDraft
+  isSaving: boolean
+  onSave: (draft: WorkoutDraft) => void
+  onArchive?: () => void
+}
+
+const DEFAULT_SETS = 3
+
+export function WorkoutEditor({
+  title,
+  initialDraft,
+  isSaving,
+  onSave,
+  onArchive,
+}: WorkoutEditorProps) {
+  const [name, setName] = useState(initialDraft.name)
+  const [exercises, setExercises] = useState(initialDraft.exercises)
+
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
+  const [target, setTarget] = useState<EditorTarget | null>(null)
+
+  const trimmedName = name.trim()
+  const canSave = trimmedName.length > 0 && !isSaving
+
+  const move = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction
+
+    if (nextIndex < 0 || nextIndex >= exercises.length) {
+      return
+    }
+
+    setExercises((current) => {
+      const next = [...current]
+      const [moved] = next.splice(index, 1)
+      next.splice(nextIndex, 0, moved)
+
+      return next
+    })
+  }
+
+  const handleConfigSubmit = (config: ExerciseConfig) => {
+    if (!target) {
+      return
+    }
+
+    if (target.kind === 'new') {
+      setExercises((current) => [
+        ...current,
+        {
+          exerciseId: target.exercise.id,
+          name: target.exercise.name,
+          type: target.exercise.type,
+          ...config,
+        },
+      ])
+    } else {
+      setExercises((current) =>
+        current.map((exercise, index) =>
+          index === target.index ? { ...exercise, ...config } : exercise,
+        ),
+      )
+    }
+
+    setTarget(null)
+  }
+
+  const handleRemove = () => {
+    if (target?.kind !== 'existing') {
+      return
+    }
+
+    const { index } = target
+
+    setExercises((current) =>
+      current.filter((_, currentIndex) => currentIndex !== index),
+    )
+
+    setTarget(null)
+  }
+
+  const confirmArchive = () => {
+    if (!onArchive) {
+      return
+    }
+
+    Alert.alert(
+      'Archive workout?',
+      'It will be hidden from My Workouts. Past sessions are kept.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Archive', style: 'destructive', onPress: onArchive },
+      ],
+    )
+  }
+
+  const targetConfig: ExerciseConfig =
+    target?.kind === 'existing'
+      ? {
+          sets: exercises[target.index].sets,
+          repMin: exercises[target.index].repMin,
+          repMax: exercises[target.index].repMax,
+        }
+      : { sets: DEFAULT_SETS, repMin: null, repMax: null }
+
+  const targetName =
+    target?.kind === 'new'
+      ? target.exercise.name
+      : target?.kind === 'existing'
+        ? exercises[target.index].name
+        : ''
+
+  return (
+    <SafeAreaView edges={['top']} style={styles.container}>
+      <ScreenHeader
+        actionDisabled={!canSave}
+        actionLabel="Save"
+        onAction={() => onSave({ name: trimmedName, exercises })}
+        title={title}
+      />
+
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
+      >
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <SectionLabel>Workout name</SectionLabel>
+          <TextField
+            onChangeText={setName}
+            placeholder="e.g. Upper A"
+            returnKeyType="done"
+            value={name}
+          />
+
+          <Divider />
+
+          <SectionLabel>
+            {exercises.length > 1
+              ? 'Exercises — use ↑ ↓ to reorder'
+              : 'Exercises'}
+          </SectionLabel>
+
+          {exercises.length === 0 ? (
+            <Text style={styles.empty}>No exercises yet.</Text>
+          ) : null}
+
+          {exercises.map((exercise, index) => (
+            <View key={exercise.exerciseId} style={styles.row}>
+              <View style={styles.reorder}>
+                <Pressable
+                  accessibilityLabel={`Move ${exercise.name} up`}
+                  accessibilityRole="button"
+                  disabled={index === 0}
+                  hitSlop={6}
+                  onPress={() => move(index, -1)}
+                  style={({ pressed }) => [
+                    styles.reorderButton,
+                    pressed && styles.pressed,
+                    index === 0 && styles.inactive,
+                  ]}
+                >
+                  <Text style={styles.reorderLabel}>↑</Text>
+                </Pressable>
+
+                <Pressable
+                  accessibilityLabel={`Move ${exercise.name} down`}
+                  accessibilityRole="button"
+                  disabled={index === exercises.length - 1}
+                  hitSlop={6}
+                  onPress={() => move(index, 1)}
+                  style={({ pressed }) => [
+                    styles.reorderButton,
+                    pressed && styles.pressed,
+                    index === exercises.length - 1 && styles.inactive,
+                  ]}
+                >
+                  <Text style={styles.reorderLabel}>↓</Text>
+                </Pressable>
+              </View>
+
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setTarget({ kind: 'existing', index })}
+                style={({ pressed }) => [
+                  styles.rowMain,
+                  pressed && styles.rowPressed,
+                ]}
+              >
+                <View style={styles.flex}>
+                  <Text style={styles.rowTitle}>{exercise.name}</Text>
+                  <Text style={styles.rowMeta}>
+                    {formatSetTarget(
+                      exercise.sets,
+                      exercise.repMin,
+                      exercise.repMax,
+                      exercise.type,
+                    )}
+                  </Text>
+                </View>
+
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+            </View>
+          ))}
+
+          <View style={styles.addButton}>
+            <Button
+              label="+ Add Exercise"
+              onPress={() => setIsPickerOpen(true)}
+              variant="secondary"
+            />
+          </View>
+
+          {onArchive ? (
+            <View style={styles.archive}>
+              <Button
+                label="Archive Workout"
+                onPress={confirmArchive}
+                variant="destructive"
+              />
+            </View>
+          ) : null}
+        </ScrollView>
+      </KeyboardAvoidingView>
+
+      <ExercisePickerModal
+        onClose={() => setIsPickerOpen(false)}
+        onSelect={(exercise) => {
+          setIsPickerOpen(false)
+          setTarget({ kind: 'new', exercise })
+        }}
+        usedExerciseIds={exercises.map((exercise) => exercise.exerciseId)}
+        visible={isPickerOpen}
+      />
+
+      <ExerciseConfigModal
+        exerciseName={targetName}
+        initialConfig={targetConfig}
+        mode={target?.kind === 'new' ? 'add' : 'edit'}
+        onClose={() => setTarget(null)}
+        onRemove={target?.kind === 'existing' ? handleRemove : undefined}
+        onSubmit={handleConfigSubmit}
+        visible={target !== null}
+      />
+    </SafeAreaView>
+  )
+}
+
+const styles = StyleSheet.create({
+  container: {
+    backgroundColor: colors.background,
+    flex: 1,
+  },
+
+  flex: {
+    flex: 1,
+  },
+
+  content: {
+    paddingBottom: spacing.xxl,
+    paddingHorizontal: gutter,
+    paddingTop: spacing.xs,
+  },
+
+  empty: {
+    color: colors.textMuted,
+    fontSize: fontSize.meta,
+    paddingVertical: spacing.md,
+  },
+
+  row: {
+    alignItems: 'center',
+    borderBottomColor: colors.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+
+  reorder: {
+    gap: 4,
+  },
+
+  reorderButton: {
+    alignItems: 'center',
+    backgroundColor: colors.elevated,
+    borderColor: colors.border,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    height: 26,
+    justifyContent: 'center',
+    width: 32,
+  },
+
+  reorderLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+
+  rowMain: {
+    alignItems: 'center',
+    flex: 1,
+    flexDirection: 'row',
+    gap: 10,
+    minHeight: 56,
+  },
+
+  rowPressed: {
+    opacity: 0.6,
+  },
+
+  rowTitle: {
+    color: colors.textPrimary,
+    fontSize: 15.5,
+    fontWeight: '500',
+  },
+
+  rowMeta: {
+    color: colors.textMuted,
+    fontSize: fontSize.meta,
+    marginTop: 2,
+  },
+
+  chevron: {
+    color: colors.textMuted,
+    fontSize: 17,
+  },
+
+  addButton: {
+    marginTop: spacing.lg,
+  },
+
+  archive: {
+    marginTop: spacing.xxl,
+  },
+
+  pressed: {
+    opacity: 0.6,
+  },
+
+  inactive: {
+    opacity: 0.3,
+  },
+})
