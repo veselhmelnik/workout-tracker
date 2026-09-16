@@ -58,17 +58,15 @@ The app works fully offline using SQLite.
 
 ## Screenshots
 
-Add screenshots from the final Android build here.
-
-Recommended layout:
-
 | Workouts                   | Active Workout                   | History                   |
 | -------------------------- | -------------------------------- | ------------------------- |
-| `screenshots/workouts.png` | `screenshots/active-workout.png` | `screenshots/history.png` |
+| <img width="428" height="917" alt="image" src="https://github.com/user-attachments/assets/ff54185f-4e75-4187-b37a-e99b47ce17d9" /> | <img width="437" height="922" alt="image" src="https://github.com/user-attachments/assets/3b22fc89-dad4-46a4-811f-59d4e64ec8d6" />|<img width="441" height="966" alt="image" src="https://github.com/user-attachments/assets/34677e2b-ba74-45e8-87eb-dd5277b5e8b9" /> |
 
 | Exercises                   | Edit Workout                   | Exercise History                   |
 | --------------------------- | ------------------------------ | ---------------------------------- |
-| `screenshots/exercises.png` | `screenshots/edit-workout.png` | `screenshots/exercise-history.png` |
+| <img width="428" height="914" alt="image" src="https://github.com/user-attachments/assets/6d057f31-2854-4fbf-820a-018435082547" />| <img width="428" height="922" alt="image" src="https://github.com/user-attachments/assets/bef36594-c704-4523-b775-6505704223b9" /> | <img width="420" height="929" alt="image" src="https://github.com/user-attachments/assets/077eb2d3-bc0f-4fcf-bda8-f856d2e5ae63" />
+ 
+ 
 
 ## Tech Stack
 
