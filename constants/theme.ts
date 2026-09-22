@@ -22,6 +22,8 @@ export const colors = {
   border: '#2B323A',
   borderStrong: '#3A424C',
   divider: '#1E242B',
+  /** Second, dimmer bar in skeleton rows. */
+  skeleton: '#1A1F25',
 
   active: '#E08A28',
   activeText: '#F5B25E',

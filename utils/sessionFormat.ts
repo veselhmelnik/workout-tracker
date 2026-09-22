@@ -19,7 +19,7 @@ export function formatDuration(elapsedMs: number): string {
 
 /** "52.5 kg · 4/3/3" for weighted work, "12/10/9" when there is no weight. */
 export function formatHistorySets(
-  item: ExerciseHistoryItem,
+  item: Pick<ExerciseHistoryItem, 'sets'>,
   type: ExerciseType,
 ): string {
   const recorded = item.sets.filter((set) => set.reps !== null)

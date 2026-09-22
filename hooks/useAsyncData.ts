@@ -45,11 +45,13 @@ export function useAsyncData<T>(
       }
     } catch (error) {
       if (isMounted.current) {
-        setState({
-          data: null,
+        // Keep the last good data so a failed refresh does not blank a
+        // screen that was already showing valid content.
+        setState((previous) => ({
+          data: previous.data,
           isLoading: false,
           error: error instanceof Error ? error : new Error(String(error)),
-        })
+        }))
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

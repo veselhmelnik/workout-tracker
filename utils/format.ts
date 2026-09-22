@@ -7,6 +7,21 @@ export function formatDayMonth(isoDate: string): string {
   })
 }
 
+/**
+ * Stacked date for result rows: "18" over "SEP". Both parts come from the
+ * device locale, so this yields "ВЕР." or "EYL" as well; never a fixed format.
+ */
+export function formatDateBlock(isoDate: string): { day: string; month: string } {
+  const date = new Date(isoDate)
+
+  return {
+    day: date.toLocaleDateString(undefined, { day: '2-digit' }),
+    month: date
+      .toLocaleDateString(undefined, { month: 'short' })
+      .toLocaleUpperCase(),
+  }
+}
+
 export function formatLastPerformed(isoDate: string | null): string {
   return isoDate ? `Last: ${formatDayMonth(isoDate)}` : 'Never'
 }

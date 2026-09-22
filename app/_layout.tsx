@@ -1,14 +1,13 @@
 import { ErrorView, LoadingView } from '@/components/ui/StateViews'
 import { colors } from '@/constants/theme'
 import { migrateDb } from '@/db/migrations'
+import { seedBuiltInExercises, seedMuscles } from '@/db/seeds'
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
 import { StyleSheet, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 
-// Navigation containers paint their own backgrounds during transitions, so they
-// get the app surfaces too; otherwise screens flash the default theme colour.
 const navigationTheme = {
   ...DarkTheme,
   colors: {
@@ -28,21 +27,23 @@ export default function RootLayout() {
   useEffect(() => {
     let isActive = true
 
-    migrateDb()
-      .then(async () => {
+    async function initializeApp() {
+      try {
+        await migrateDb()
+        await seedMuscles()
+        await seedBuiltInExercises()
+
         if (isActive) {
           setIsReady(true)
         }
-      })
-      .catch((migrationError: unknown) => {
+      } catch (error) {
         if (isActive) {
-          setError(
-            migrationError instanceof Error
-              ? migrationError
-              : new Error(String(migrationError)),
-          )
+          setError(error instanceof Error ? error : new Error(String(error)))
         }
-      })
+      }
+    }
+
+    initializeApp()
 
     return () => {
       isActive = false
@@ -74,8 +75,10 @@ export default function RootLayout() {
             <Stack.Screen name="workout/[id]" />
             <Stack.Screen name="exercise/new" />
             <Stack.Screen name="exercise/[id]/index" />
+            <Stack.Screen name="exercise/[id]/edit" />
             <Stack.Screen name="exercise/[id]/history" />
             <Stack.Screen name="session/[id]" />
+            <Stack.Screen name="history/[id]" />
           </Stack>
         </ThemeProvider>
       )}

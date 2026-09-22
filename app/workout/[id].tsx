@@ -10,26 +10,37 @@ import {
   getWorkoutById,
   updateWorkout,
 } from '@/repositories/workoutRepository'
+import { getExerciseDetailsById } from '@/repositories/exerciseRepository'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useState } from 'react'
 import { Alert, StyleSheet, View } from 'react-native'
 
 export default function EditWorkoutScreen() {
   const router = useRouter()
-  const { id } = useLocalSearchParams<{ id: string }>()
+  // Exercise Details → "Add to a workout" passes the exercise to configure.
+  const { id, addExerciseId } = useLocalSearchParams<{
+    id: string
+    addExerciseId?: string
+  }>()
   const [isSaving, setIsSaving] = useState(false)
 
   const loadWorkout = useCallback(async () => {
-    const workout = await getWorkoutById(id)
+    const [workout, exerciseToAdd] = await Promise.all([
+      getWorkoutById(id),
+      addExerciseId ? getExerciseDetailsById(addExerciseId) : null,
+    ])
 
     if (!workout) {
       throw new Error('This workout no longer exists.')
     }
 
-    return workout
-  }, [id])
+    return { ...workout, exerciseToAdd: exerciseToAdd?.exercise ?? null }
+  }, [id, addExerciseId])
 
-  const { data, isLoading, error, reload } = useAsyncData(loadWorkout, [id])
+  const { data, isLoading, error, reload } = useAsyncData(loadWorkout, [
+    id,
+    addExerciseId,
+  ])
 
   const handleSave = async (draft: WorkoutDraft) => {
     setIsSaving(true)
@@ -104,6 +115,7 @@ export default function EditWorkoutScreen() {
           repMax: exercise.repMax,
         })),
       }}
+      initialAddExercise={data.exerciseToAdd ?? undefined}
       isSaving={isSaving}
       onArchive={handleArchive}
       onSave={handleSave}

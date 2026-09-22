@@ -47,6 +47,8 @@ type WorkoutEditorProps = {
   isSaving: boolean
   onSave: (draft: WorkoutDraft) => void
   onArchive?: () => void
+  /** Opens the exercise configuration straight away (Add to a workout). */
+  initialAddExercise?: Exercise
 }
 
 const DEFAULT_SETS = 3
@@ -57,12 +59,27 @@ export function WorkoutEditor({
   isSaving,
   onSave,
   onArchive,
+  initialAddExercise,
 }: WorkoutEditorProps) {
   const [name, setName] = useState(initialDraft.name)
   const [exercises, setExercises] = useState(initialDraft.exercises)
 
   const [isPickerOpen, setIsPickerOpen] = useState(false)
-  const [target, setTarget] = useState<EditorTarget | null>(null)
+  const [target, setTarget] = useState<EditorTarget | null>(() => {
+    if (!initialAddExercise) {
+      return null
+    }
+
+    // Already in this workout: edit its configuration rather than adding a
+    // duplicate, which the workout cannot hold.
+    const index = initialDraft.exercises.findIndex(
+      (exercise) => exercise.exerciseId === initialAddExercise.id,
+    )
+
+    return index === -1
+      ? { kind: 'new', exercise: initialAddExercise }
+      : { kind: 'existing', index }
+  })
 
   const trimmedName = name.trim()
   const canSave = trimmedName.length > 0 && !isSaving

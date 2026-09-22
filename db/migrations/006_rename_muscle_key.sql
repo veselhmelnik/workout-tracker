@@ -1,0 +1,2 @@
+ALTER TABLE muscles
+RENAME COLUMN KEY TO muscle_key

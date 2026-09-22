@@ -1,127 +1,212 @@
 import {
-  HistoryEmptyRow,
-  HistoryRow,
-} from '@/components/history/HistoryRow'
-import { WorkoutSelector } from '@/components/history/WorkoutSelector'
-import { EmptyView, ErrorView, LoadingView } from '@/components/ui/StateViews'
-import {
-  colors,
-  fontSize,
-  gutter,
-  labelText,
-  spacing,
-} from '@/constants/theme'
+  MonthHeading,
+  SessionRow,
+  SessionRowSkeleton,
+} from '@/components/history/SessionRow'
+import { WorkoutFilterSheet } from '@/components/history/WorkoutFilterSheet'
+import { Button } from '@/components/ui/Button'
+import { colors, fontSize, gutter, radius, spacing } from '@/constants/theme'
 import { useAsyncData } from '@/hooks/useAsyncData'
-import { getWorkoutHistory } from '@/repositories/historyRepository'
-import { getWorkouts } from '@/repositories/workoutRepository'
-import { formatDayMonth } from '@/utils/format'
-import { formatHistorySets } from '@/utils/sessionFormat'
+import {
+  getWorkoutSessions,
+  getWorkoutsWithSessions,
+  type WorkoutSessionHistoryItem,
+} from '@/repositories/workoutSessionHistoryRepository'
+import { formatMonthHeading, getMonthKey } from '@/utils/sessionHistoryFormat'
 import { useRouter } from 'expo-router'
-import { useCallback, useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useCallback, useMemo, useState } from 'react'
+import { Pressable, SectionList, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+
+type MonthSection = {
+  key: string
+  title: string
+  data: WorkoutSessionHistoryItem[]
+}
+
+const SKELETON_ROWS = Array.from({ length: 8 }, (_, index) => index)
 
 export default function HistoryScreen() {
   const router = useRouter()
-  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [workoutId, setWorkoutId] = useState<string | null>(null)
+  const [isFilterOpen, setIsFilterOpen] = useState(false)
 
-  const {
-    data: workouts,
-    isLoading: isLoadingWorkouts,
-    error: workoutsError,
-    reload: reloadWorkouts,
-  } = useAsyncData(getWorkouts)
+  const load = useCallback(async () => {
+    const [sessions, workouts] = await Promise.all([
+      getWorkoutSessions(workoutId ?? undefined),
+      getWorkoutsWithSessions(),
+    ])
 
-  // Default to the first workout until the user picks another one.
-  const activeId =
-    selectedId && workouts?.some((workout) => workout.id === selectedId)
-      ? selectedId
-      : (workouts?.[0]?.id ?? null)
+    // Tag the result with its filter so a slow or failed reload for a new
+    // filter never shows the previous filter's sessions as if they matched.
+    return { workoutId, sessions, workouts }
+  }, [workoutId])
 
-  const loadHistory = useCallback(
-    () => (activeId ? getWorkoutHistory(activeId) : Promise.resolve([])),
-    [activeId],
+  const { data, error, reload } = useAsyncData(load, [workoutId])
+
+  const isCurrent = data !== null && data.workoutId === workoutId
+  const sessions = isCurrent ? data.sessions : null
+  const workouts = data?.workouts ?? []
+  const selectedWorkout = workouts.find((workout) => workout.id === workoutId)
+
+  // Sessions arrive newest first; grouping preserves that order.
+  const sections = useMemo<MonthSection[]>(() => {
+    const result: MonthSection[] = []
+
+    for (const session of sessions ?? []) {
+      const key = getMonthKey(session.finishedAt)
+      const last = result[result.length - 1]
+
+      if (last?.key === key) {
+        last.data.push(session)
+      } else {
+        result.push({
+          key,
+          title: formatMonthHeading(session.finishedAt),
+          data: [session],
+        })
+      }
+    }
+
+    return result
+  }, [sessions])
+
+  const latestSessionId = sessions?.[0]?.id
+
+  const openSession = useCallback(
+    (sessionId: string) =>
+      router.push({ pathname: '/history/[id]', params: { id: sessionId } }),
+    [router],
   )
 
-  const {
-    data: history,
-    isLoading: isLoadingHistory,
-    error: historyError,
-    reload: reloadHistory,
-  } = useAsyncData(loadHistory, [activeId])
+  const renderBody = () => {
+    if (!sessions) {
+      return error ? (
+        <InlineMessage
+          action={{ label: 'Retry', onPress: reload }}
+          body="Your data is stored on this device and is safe."
+          isError
+          title="Could not load history"
+        />
+      ) : (
+        <View style={styles.list}>
+          {SKELETON_ROWS.map((index) => (
+            <SessionRowSkeleton index={index} key={index} />
+          ))}
+        </View>
+      )
+    }
+
+    if (sessions.length === 0) {
+      return workoutId ? (
+        <InlineMessage
+          action={{ label: 'Show all workouts', onPress: () => setWorkoutId(null) }}
+          body={`No finished sessions for ${selectedWorkout?.name ?? 'this workout'} yet.`}
+          title="No sessions"
+        />
+      ) : (
+        <InlineMessage
+          body="Finish a workout and it will appear here."
+          title="No sessions yet"
+        />
+      )
+    }
+
+    return (
+      <SectionList
+        ListHeaderComponent={
+          // A refresh failed but earlier results are still valid.
+          error ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={reload}
+              style={styles.staleNotice}
+            >
+              <Text style={styles.staleText}>
+                Could not refresh. Showing saved results. Tap to retry.
+              </Text>
+            </Pressable>
+          ) : null
+        }
+        contentContainerStyle={styles.listContent}
+        initialNumToRender={14}
+        keyExtractor={(session) => session.id}
+        renderItem={({ item }) => (
+          <SessionRow
+            isLatest={item.id === latestSessionId}
+            onPress={openSession}
+            session={item}
+          />
+        )}
+        renderSectionHeader={({ section }) => (
+          <MonthHeading label={section.title} />
+        )}
+        sections={sections}
+        stickySectionHeadersEnabled={false}
+        style={styles.list}
+      />
+    )
+  }
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.screenTitle}>History</Text>
+      <Text style={styles.screenTitle}>History</Text>
 
-        {workouts && workouts.length > 0 ? (
-          <View style={styles.selector}>
-            <WorkoutSelector
-              activeId={activeId}
-              onSelect={setSelectedId}
-              workouts={workouts}
-            />
-          </View>
-        ) : null}
-      </View>
+      <Pressable
+        accessibilityHint="Choose which workout's sessions to show"
+        accessibilityRole="button"
+        onPress={() => setIsFilterOpen(true)}
+        style={({ pressed }) => [styles.filter, pressed && styles.pressed]}
+      >
+        <Text numberOfLines={1} style={styles.filterLabel}>
+          {selectedWorkout?.name ?? 'All Workouts'}
+        </Text>
+        <Text style={styles.filterCaret}>▾</Text>
+      </Pressable>
 
-      {isLoadingWorkouts && !workouts ? <LoadingView /> : null}
+      {renderBody()}
 
-      {workoutsError ? (
-        <ErrorView error={workoutsError} onRetry={reloadWorkouts} />
-      ) : null}
-
-      {workouts && workouts.length === 0 ? (
-        <EmptyView message="No workouts yet. Create one to start building history." />
-      ) : null}
-
-      {historyError ? (
-        <ErrorView error={historyError} onRetry={reloadHistory} />
-      ) : null}
-
-      {activeId && !historyError ? (
-        <ScrollView contentContainerStyle={styles.content}>
-          {isLoadingHistory && !history ? <LoadingView /> : null}
-
-          {history && history.length === 0 ? (
-            <EmptyView message="This workout has no exercises yet." />
-          ) : null}
-
-          {history?.map((exercise) => (
-            <View key={exercise.exerciseId} style={styles.section}>
-              <Pressable
-                accessibilityHint="Opens the full history for this exercise"
-                accessibilityRole="button"
-                onPress={() =>
-                  router.push(`/exercise/${exercise.exerciseId}/history`)
-                }
-                style={({ pressed }) => [
-                  styles.sectionHeader,
-                  pressed && styles.pressed,
-                ]}
-              >
-                <Text style={styles.sectionLabel}>{exercise.name}</Text>
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
-
-              {exercise.recent.length === 0 ? (
-                <HistoryEmptyRow message="No history yet" />
-              ) : (
-                exercise.recent.map((item, itemIndex) => (
-                  <HistoryRow
-                    date={formatDayMonth(item.performedAt)}
-                    isLatest={itemIndex === 0}
-                    key={item.sessionExerciseId}
-                    value={formatHistorySets(item, exercise.type)}
-                  />
-                ))
-              )}
-            </View>
-          ))}
-        </ScrollView>
-      ) : null}
+      <WorkoutFilterSheet
+        onClose={() => setIsFilterOpen(false)}
+        onSelect={(nextWorkoutId) => {
+          setIsFilterOpen(false)
+          setWorkoutId(nextWorkoutId)
+        }}
+        selectedWorkoutId={workoutId}
+        visible={isFilterOpen}
+        workouts={workouts}
+      />
     </SafeAreaView>
+  )
+}
+
+type InlineMessageProps = {
+  title: string
+  body: string
+  isError?: boolean
+  action?: { label: string; onPress: () => void }
+}
+
+/** One line of cause, one of consequence; left-aligned like the design. */
+function InlineMessage({ title, body, isError = false, action }: InlineMessageProps) {
+  return (
+    <View style={styles.message}>
+      <Text style={[styles.messageTitle, isError && styles.messageTitleError]}>
+        {title}
+      </Text>
+      <Text style={styles.messageBody}>{body}</Text>
+
+      {action ? (
+        <View style={styles.messageAction}>
+          <Button
+            label={action.label}
+            onPress={action.onPress}
+            size="compact"
+            variant="secondary"
+          />
+        </View>
+      ) : null}
+    </View>
   )
 }
 
@@ -131,55 +216,97 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
-  header: {
-    paddingTop: spacing.md,
-  },
-
   screenTitle: {
     color: colors.textPrimary,
     fontSize: fontSize.screenTitle,
     fontWeight: '700',
     letterSpacing: -0.56,
-    marginBottom: spacing.lg,
-    paddingHorizontal: gutter,
-  },
-
-  selector: {
-    paddingHorizontal: gutter,
-  },
-
-  content: {
-    paddingBottom: spacing.xxl,
     paddingHorizontal: gutter,
     paddingTop: spacing.sm,
   },
 
-  // Generous break between exercises keeps long histories scannable.
-  section: {
-    marginTop: spacing.xxl,
-  },
-
-  sectionHeader: {
+  filter: {
     alignItems: 'center',
+    backgroundColor: colors.elevated,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
     flexDirection: 'row',
+    gap: spacing.md,
+    height: 44,
     justifyContent: 'space-between',
-    marginBottom: spacing.xs,
-    minHeight: 36,
+    marginHorizontal: gutter,
+    marginTop: 14,
+    paddingHorizontal: 14,
   },
 
-  sectionLabel: {
-    ...labelText,
-    color: colors.textSecondary,
+  filterLabel: {
+    color: colors.textPrimary,
     flex: 1,
-    fontSize: 11.5,
+    fontSize: 14.5,
+    fontWeight: '500',
   },
 
-  chevron: {
-    color: colors.textMuted,
-    fontSize: 16,
+  filterCaret: {
+    color: colors.textSecondary,
+    fontSize: 13,
+  },
+
+  list: {
+    flex: 1,
+    paddingHorizontal: gutter,
+  },
+
+  listContent: {
+    paddingBottom: spacing.xxl,
+  },
+
+  staleNotice: {
+    backgroundColor: colors.strip,
+    borderColor: colors.divider,
+    borderLeftColor: colors.referenceRule,
+    borderLeftWidth: 3,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 10,
+  },
+
+  staleText: {
+    color: colors.textSecondary,
+    fontSize: 12.5,
+  },
+
+  message: {
+    gap: 6,
+    paddingHorizontal: gutter,
+    paddingTop: spacing.xl,
+  },
+
+  messageTitle: {
+    color: colors.textPrimary,
+    fontSize: 14.5,
+    fontWeight: '600',
+  },
+
+  messageTitleError: {
+    color: colors.destructive,
+  },
+
+  messageBody: {
+    color: colors.textSecondary,
+    fontSize: 12.5,
+    lineHeight: 19,
+  },
+
+  messageAction: {
+    alignSelf: 'flex-start',
+    marginTop: spacing.xs,
+    minWidth: 96,
   },
 
   pressed: {
-    opacity: 0.6,
+    opacity: 0.7,
   },
 })

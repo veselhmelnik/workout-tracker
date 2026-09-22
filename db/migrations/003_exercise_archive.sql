@@ -1,0 +1,2 @@
+ALTER TABLE exercises
+ADD COLUMN is_archived INTEGER NOT NULL DEFAULT 0;
