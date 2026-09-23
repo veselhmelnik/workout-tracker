@@ -25,6 +25,30 @@ const navigationTheme = {
   },
 }
 
+/**
+ * Single-flight startup: migrations, then seeds, then the onboarding flag.
+ * Held at module scope so a re-mount (StrictMode, Fast Refresh) reuses the
+ * same run instead of starting a second migration/seed sequence.
+ */
+let startupPromise: Promise<{ hasOnboarded: boolean }> | null = null
+
+function startApp() {
+  startupPromise ??= (async () => {
+    await migrateDb()
+    await seedMuscles()
+    await seedBuiltInExercises()
+
+    return { hasOnboarded: await getOnboardingCompleted() }
+  })().catch((startupError: unknown) => {
+    // Let a later mount retry rather than caching the failure forever.
+    startupPromise = null
+
+    throw startupError
+  })
+
+  return startupPromise
+}
+
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false)
   const [error, setError] = useState<Error | null>(null)
@@ -33,27 +57,23 @@ export default function RootLayout() {
   useEffect(() => {
     let isActive = true
 
-    async function initializeApp() {
-      try {
-        await migrateDb()
-        await seedMuscles()
-        await seedBuiltInExercises()
-
-        // Resolved before anything renders, so the tabs never flash first.
-        const hasOnboarded = await getOnboardingCompleted()
-
+    startApp()
+      .then(({ hasOnboarded }) => {
         if (isActive) {
+          // Resolved before anything renders, so the tabs never flash first.
           setNeedsOnboarding(!hasOnboarded)
           setIsReady(true)
         }
-      } catch (error) {
+      })
+      .catch((startupError: unknown) => {
         if (isActive) {
-          setError(error instanceof Error ? error : new Error(String(error)))
+          setError(
+            startupError instanceof Error
+              ? startupError
+              : new Error(String(startupError)),
+          )
         }
-      }
-    }
-
-    initializeApp()
+      })
 
     return () => {
       isActive = false

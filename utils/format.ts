@@ -22,10 +22,6 @@ export function formatDateBlock(isoDate: string): { day: string; month: string }
   }
 }
 
-export function formatLastPerformed(isoDate: string | null): string {
-  return isoDate ? `Last: ${formatDayMonth(isoDate)}` : 'Never'
-}
-
 export function formatExerciseCount(count: number): string {
   return `${count} ${count === 1 ? 'exercise' : 'exercises'}`
 }

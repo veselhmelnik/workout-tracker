@@ -34,7 +34,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:migrations": "node scripts/verify-migrations.mjs"
   },
   "private": true
 }

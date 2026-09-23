@@ -84,7 +84,8 @@ export default function ExerciseDetailsScreen() {
     )
   }
 
-  if (error || !data || !exercise) {
+  // A failed refresh keeps the last good details and reports inline below.
+  if (!data || !exercise) {
     return (
       <Screen header={header}>
         <View style={styles.gate}>
@@ -105,6 +106,12 @@ export default function ExerciseDetailsScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.name}>{exercise.name}</Text>
         <ExerciseMetaLine details={data.details} />
+
+        {error ? (
+          <Text style={styles.staleNotice}>
+            Could not refresh. Showing saved results.
+          </Text>
+        ) : null}
 
         <SectionHeading>Recent performance</SectionHeading>
 
@@ -278,6 +285,12 @@ const styles = StyleSheet.create({
   unsetMuscle: {
     color: colors.textMuted,
     fontStyle: 'italic',
+  },
+
+  staleNotice: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: spacing.sm,
   },
 
   sectionHeading: {

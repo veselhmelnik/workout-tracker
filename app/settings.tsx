@@ -39,8 +39,6 @@ export default function SettingsScreen() {
           <Pressable
             accessibilityHint="Explains when this becomes available"
             accessibilityRole="button"
-            // Stated in text as well as styling, not by colour alone.
-            accessibilityState={{ disabled: true }}
             key={feature.title}
             onPress={() => setSheetFeature(feature)}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}

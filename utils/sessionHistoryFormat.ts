@@ -110,8 +110,11 @@ export function formatSetDeviation(
 export function summarizeSession(details: WorkoutSessionHistoryDetails) {
   const plannedExercises = details.exercises.length
   const performedExercises = details.exercises.filter(isExercisePerformed).length
+  // Sets logged on an exercise that was later skipped do not count, matching
+  // the session list query.
   const performedSets = details.exercises.reduce(
-    (total, exercise) => total + exercise.sets.length,
+    (total, exercise) =>
+      exercise.isSkipped ? total : total + exercise.sets.length,
     0,
   )
 

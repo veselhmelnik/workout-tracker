@@ -2,6 +2,8 @@ import { dbPromise } from '@/db/database'
 import type {
   ExerciseType,
   Muscle,
+  MuscleGroup,
+  MuscleKey,
 } from '@/types/entities'
 export type WorkoutSessionHistoryItem = {
   id: string
@@ -181,9 +183,9 @@ export async function getWorkoutSessionHistoryDetails(
     rep_max: number | null
     planned_sets: number | null
     muscle_id: string | null
-    muscle_key: string | null
+    muscle_key: MuscleKey | null
     muscle_name: string | null
-    muscle_group: string | null
+    muscle_group: MuscleGroup | null
     muscle_role: 'PRIMARY' | 'SECONDARY' | null
   }>(
     `
@@ -258,9 +260,9 @@ export async function getWorkoutSessionHistoryDetails(
     ) {
       const muscle: Muscle = {
         id: row.muscle_id,
-        key: row.muscle_key as Muscle['key'],
+        key: row.muscle_key,
         name: row.muscle_name,
-        group: row.muscle_group as Muscle['group'],
+        group: row.muscle_group,
       }
 
       if (row.muscle_role === 'PRIMARY') {

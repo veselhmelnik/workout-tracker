@@ -130,9 +130,39 @@ export async function getExerciseDetailsById(
   return mapExerciseDetailsRows(rows)[0] ?? null
 }
 
+/** Max secondary muscles per exercise; mirrored by the form layer. */
+const MAX_SECONDARY_MUSCLES = 3
+
+/**
+ * Enforces the muscle rules at the persistence boundary, so a caller that
+ * skips the form cannot write an exercise with no primary, a duplicated
+ * secondary, or the primary repeated as a secondary.
+ */
+function assertValidMuscleSelection(input: SaveExerciseInput): void {
+  if (!input.primaryMuscle) {
+    throw new Error('An exercise needs exactly one primary muscle')
+  }
+
+  if (input.secondaryMuscles.length > MAX_SECONDARY_MUSCLES) {
+    throw new Error(
+      `An exercise can have at most ${MAX_SECONDARY_MUSCLES} secondary muscles`,
+    )
+  }
+
+  if (new Set(input.secondaryMuscles).size !== input.secondaryMuscles.length) {
+    throw new Error('Secondary muscles must be distinct')
+  }
+
+  if (input.secondaryMuscles.includes(input.primaryMuscle)) {
+    throw new Error('The primary muscle cannot also be a secondary muscle')
+  }
+}
+
 export async function createExerciseRepository(
   input: SaveExerciseInput,
 ): Promise<Exercise> {
+  assertValidMuscleSelection(input)
+
   const db = await dbPromise
 
   const id = Crypto.randomUUID()
@@ -206,6 +236,8 @@ export async function createExerciseRepository(
 export async function updateExerciseRepository(
   input: UpdateExerciseInput,
 ): Promise<void> {
+  assertValidMuscleSelection(input)
+
   const db = await dbPromise
   const now = new Date().toISOString()
 
@@ -301,6 +333,7 @@ export async function archiveExerciseRepository(
         updated_at = ?
       WHERE id = ?
         AND is_built_in = 0;
+      -- Soft delete only: rows are never removed, so sessions keep their history.
     `,
     now,
     id,

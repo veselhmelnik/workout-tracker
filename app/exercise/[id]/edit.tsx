@@ -103,7 +103,9 @@ export default function EditExerciseScreen() {
     )
   }
 
-  if (error || !data) {
+  // Only an initial load failure shows the error state. Once the form holds
+  // data, a failed focus refresh keeps the stale values and unsaved input.
+  if (!data) {
     return (
       <Fallback>
         <ErrorView

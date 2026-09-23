@@ -32,7 +32,6 @@ export type WorkoutDetails = Workout & {
     id: string
     exerciseId: string
     name: string
-    targetMuscle: string
     type: 'WEIGHTED' | 'BODYWEIGHT'
     sets: number
     repMin: number | null
@@ -141,7 +140,6 @@ export async function getWorkoutById(
     id: string
     exercise_id: string
     name: string
-    target_muscle: string
     type: 'WEIGHTED' | 'BODYWEIGHT'
     sets: number
     rep_min: number | null
@@ -153,7 +151,6 @@ export async function getWorkoutById(
         we.id,
         we.exercise_id,
         e.name,
-        e.target_muscle,
         e.type,
         we.sets,
         we.rep_min,
@@ -179,7 +176,6 @@ export async function getWorkoutById(
       id: exercise.id,
       exerciseId: exercise.exercise_id,
       name: exercise.name,
-      targetMuscle: exercise.target_muscle,
       type: exercise.type,
       sets: exercise.sets,
       repMin: exercise.rep_min,

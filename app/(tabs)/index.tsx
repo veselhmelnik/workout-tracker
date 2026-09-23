@@ -122,7 +122,16 @@ export default function WorkoutsScreen() {
 
         {isLoading && !data ? <LoadingView /> : null}
 
-        {error ? <ErrorView error={error} onRetry={reload} /> : null}
+        {/* Full error only without data; otherwise a compact refresh notice. */}
+        {error && !data ? <ErrorView error={error} onRetry={reload} /> : null}
+
+        {error && data ? (
+          <Pressable accessibilityRole="button" onPress={reload}>
+            <Text style={styles.staleNotice}>
+              Could not refresh. Showing saved results. Tap to retry.
+            </Text>
+          </Pressable>
+        ) : null}
 
         {activeSession ? (
           <View style={[styles.card, styles.activeCard]}>
@@ -245,6 +254,12 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
     fontSize: 13.5,
     fontWeight: '600',
+  },
+
+  staleNotice: {
+    color: colors.textMuted,
+    fontSize: 12.5,
+    marginBottom: spacing.md,
   },
 
   card: {

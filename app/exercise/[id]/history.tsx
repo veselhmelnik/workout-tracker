@@ -44,13 +44,14 @@ export default function ExerciseHistoryScreen() {
         </View>
       ) : null}
 
-      {error ? (
+      {/* Error state only without data; a failed refresh keeps the list. */}
+      {error && !data ? (
         <View style={styles.gate}>
           <ErrorView error={error} onRetry={reload} />
         </View>
       ) : null}
 
-      {data && !error ? (
+      {data ? (
         data.history.length === 0 ? (
           <View style={styles.gate}>
             <EmptyView message="No recorded sets yet. Results appear here after the first finished session." />
@@ -58,6 +59,12 @@ export default function ExerciseHistoryScreen() {
         ) : (
           <>
             <SummaryBar summary={data.summary} />
+
+            {error ? (
+              <Text style={styles.staleNotice}>
+                Could not refresh. Showing saved results.
+              </Text>
+            ) : null}
 
             {/* Newest first, as returned; long histories stay virtualised. */}
             <FlatList
@@ -155,5 +162,12 @@ const styles = StyleSheet.create({
   list: {
     paddingBottom: spacing.xxl,
     paddingHorizontal: gutter,
+  },
+
+  staleNotice: {
+    color: colors.textMuted,
+    fontSize: 12,
+    paddingHorizontal: gutter,
+    paddingTop: spacing.sm,
   },
 })

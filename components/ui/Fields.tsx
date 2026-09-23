@@ -138,32 +138,6 @@ export function Segmented<T extends string>({
   )
 }
 
-type ChipProps = {
-  label: string
-  isSelected: boolean
-  onPress: () => void
-}
-
-/** Selectable option chip. Selection is neutral graphite, never amber. */
-export function Chip({ label, isSelected, onPress }: ChipProps) {
-  return (
-    <Pressable
-      accessibilityRole="radio"
-      accessibilityState={{ selected: isSelected }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.chip,
-        isSelected && styles.chipSelected,
-        pressed && styles.pressed,
-      ]}
-    >
-      <Text style={[styles.chipLabel, isSelected && styles.chipLabelSelected]}>
-        {label}
-      </Text>
-    </Pressable>
-  )
-}
-
 export function Note({ children }: { children: string }) {
   return (
     <View style={styles.note}>
@@ -274,30 +248,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  chip: {
-    backgroundColor: colors.elevated,
-    borderColor: colors.border,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    justifyContent: 'center',
-    minHeight: 40,
-    paddingHorizontal: 14,
-  },
-
-  chipSelected: {
-    backgroundColor: colors.selected,
-    borderColor: colors.borderStrong,
-  },
-
-  chipLabel: {
-    color: colors.textSecondary,
-    fontSize: 14,
-  },
-
-  chipLabelSelected: {
-    color: colors.textPrimary,
-    fontWeight: '600',
-  },
 
   note: {
     backgroundColor: colors.strip,

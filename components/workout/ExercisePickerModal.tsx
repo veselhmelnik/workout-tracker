@@ -12,7 +12,7 @@ import { getExercises } from '@/repositories/exerciseRepository'
 import type { Exercise } from '@/types/entities'
 import {
   filterExercises,
-  groupByTargetMuscle,
+  groupByPrimaryMuscleLabel,
 } from '@/utils/exerciseGroups'
 import { useRouter } from 'expo-router'
 import { useMemo, useState } from 'react'
@@ -39,7 +39,7 @@ export function ExercisePickerModal({
   const { data, isLoading, error, reload } = useAsyncData(getExercises)
 
   const groups = useMemo(
-    () => groupByTargetMuscle(filterExercises(data ?? [], search)),
+    () => groupByPrimaryMuscleLabel(filterExercises(data ?? [], search)),
     [data, search],
   )
 
@@ -85,8 +85,8 @@ export function ExercisePickerModal({
             ) : null}
 
             {groups.map((group) => (
-              <View key={group.targetMuscle}>
-                <SectionLabel>{group.targetMuscle}</SectionLabel>
+              <View key={group.muscleLabel}>
+                <SectionLabel>{group.muscleLabel}</SectionLabel>
 
                 {group.exercises.map((exercise) => {
                   const isUsed = usedExerciseIds.includes(exercise.id)

@@ -112,15 +112,15 @@ export function splitByMuscleRole(
 
 // The Add Exercise picker in the workout editor still consumes this shape.
 export type ExerciseGroup = {
-  targetMuscle: string
+  muscleLabel: string
   exercises: Exercise[]
 }
 
-export function groupByTargetMuscle(
+export function groupByPrimaryMuscleLabel(
   exercises: ExerciseDetails[],
 ): ExerciseGroup[] {
   return groupByPrimaryMuscle(exercises).map((group) => ({
-    targetMuscle: group.label,
+    muscleLabel: group.label,
     exercises: group.exercises.map((details) => details.exercise),
   }))
 }
