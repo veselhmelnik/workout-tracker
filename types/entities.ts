@@ -113,7 +113,7 @@ export interface SessionExercise {
   exerciseId: string
   position: number
   isSkipped: boolean
-
+  plannedSets: number | null
   repMin: number | null
   repMax: number | null
 }

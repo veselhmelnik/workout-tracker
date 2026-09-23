@@ -19,7 +19,7 @@ WHERE
 
 CREATE TABLE IF NOT EXISTS muscles (
     id TEXT PRIMARY KEY NOT NULL,
-    muscle_key TEXT NOT NULL UNIQUE,
+    "key" TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     group_key TEXT NOT NULL
 );

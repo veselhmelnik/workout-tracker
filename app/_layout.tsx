@@ -1,7 +1,12 @@
+import { OnboardingFlow } from '@/components/onboarding/OnboardingFlow'
 import { ErrorView, LoadingView } from '@/components/ui/StateViews'
 import { colors } from '@/constants/theme'
 import { migrateDb } from '@/db/migrations'
 import { seedBuiltInExercises, seedMuscles } from '@/db/seeds'
+import {
+  getOnboardingCompleted,
+  setOnboardingCompleted,
+} from '@/utils/appPreferences'
 import { DarkTheme, Stack, ThemeProvider } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { useEffect, useState } from 'react'
@@ -23,6 +28,7 @@ const navigationTheme = {
 export default function RootLayout() {
   const [isReady, setIsReady] = useState(false)
   const [error, setError] = useState<Error | null>(null)
+  const [needsOnboarding, setNeedsOnboarding] = useState(false)
 
   useEffect(() => {
     let isActive = true
@@ -33,7 +39,11 @@ export default function RootLayout() {
         await seedMuscles()
         await seedBuiltInExercises()
 
+        // Resolved before anything renders, so the tabs never flash first.
+        const hasOnboarded = await getOnboardingCompleted()
+
         if (isActive) {
+          setNeedsOnboarding(!hasOnboarded)
           setIsReady(true)
         }
       } catch (error) {
@@ -62,6 +72,14 @@ export default function RootLayout() {
         <View style={styles.gate}>
           <LoadingView />
         </View>
+      ) : needsOnboarding ? (
+        <OnboardingFlow
+          onFinish={() => {
+            // Leaves onboarding even if the write fails; the helper logs it.
+            setNeedsOnboarding(false)
+            setOnboardingCompleted()
+          }}
+        />
       ) : (
         <ThemeProvider value={navigationTheme}>
           <Stack
@@ -79,6 +97,7 @@ export default function RootLayout() {
             <Stack.Screen name="exercise/[id]/history" />
             <Stack.Screen name="session/[id]" />
             <Stack.Screen name="history/[id]" />
+            <Stack.Screen name="settings" />
           </Stack>
         </ThemeProvider>
       )}

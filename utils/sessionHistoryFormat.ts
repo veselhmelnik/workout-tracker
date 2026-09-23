@@ -83,6 +83,27 @@ export function isExercisePerformed(
 }
 
 /**
+ * "2 of 3 sets" when a performed exercise recorded more or fewer sets than the
+ * session snapshot planned. Null when it matched, when nothing was planned
+ * (older sessions have no snapshot) or when the exercise was skipped.
+ */
+export function formatSetDeviation(
+  exercise: WorkoutSessionHistoryExercise,
+): string | null {
+  const plannedSets = exercise.plannedSets
+
+  if (plannedSets === null || !isExercisePerformed(exercise)) {
+    return null
+  }
+
+  const actualSets = exercise.sets.length
+
+  return actualSets === plannedSets
+    ? null
+    : `${actualSets} of ${plannedSets} sets`
+}
+
+/**
  * Totals counted the same way as the session list (getWorkoutSessions), so a
  * session reads identically in both places.
  */
@@ -94,25 +115,51 @@ export function summarizeSession(details: WorkoutSessionHistoryDetails) {
     0,
   )
 
+  const shortExercises = details.exercises.filter(
+    (exercise) =>
+      exercise.plannedSets !== null &&
+      isExercisePerformed(exercise) &&
+      exercise.sets.length < exercise.plannedSets,
+  ).length
+
   return {
     minutes: getSessionMinutes(details),
     plannedExercises,
     performedExercises,
     performedSets,
     skippedExercises: plannedExercises - performedExercises,
+    shortExercises,
   }
 }
 
-/**
- * Deterministic note for a session that fell short. Planned set counts are not
- * snapshotted per session, so it speaks only about skipped exercises.
- */
-export function describePartialSession(skippedExercises: number): string | null {
-  if (skippedExercises <= 0) {
-    return null
+type SessionDeviation = {
+  skippedExercises: number
+  /** Performed exercises that recorded fewer sets than planned. */
+  shortExercises: number
+}
+
+/** Deterministic note for a session that fell short of its template. */
+export function describePartialSession({
+  skippedExercises,
+  shortExercises,
+}: SessionDeviation): string | null {
+  const parts: string[] = []
+
+  if (skippedExercises > 0) {
+    parts.push(
+      skippedExercises === 1
+        ? 'Session ended early. 1 exercise was skipped.'
+        : `Session ended early. ${skippedExercises} exercises were skipped.`,
+    )
   }
 
-  return skippedExercises === 1
-    ? 'Session ended early. 1 exercise was skipped.'
-    : `Session ended early. ${skippedExercises} exercises were skipped.`
+  if (shortExercises > 0) {
+    parts.push(
+      shortExercises === 1
+        ? '1 exercise recorded fewer sets than planned.'
+        : `${shortExercises} exercises recorded fewer sets than planned.`,
+    )
+  }
+
+  return parts.length > 0 ? parts.join(' ') : null
 }

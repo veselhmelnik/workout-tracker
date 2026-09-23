@@ -40,6 +40,11 @@ const migrations: Migration[] = [
     name: 'rename_muscle_key',
     asset: require('./migrations/006_rename_muscle_key.sql'),
   },
+  {
+  version: 7,
+  name: 'session_planned_sets',
+  asset: require('./migrations/007_session_planned_sets.sql'),
+},
 ]
 
 async function runMigration(

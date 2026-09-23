@@ -2,7 +2,10 @@ import { colors, fonts } from '@/constants/theme'
 import type { WorkoutSessionHistoryExercise } from '@/repositories/workoutSessionHistoryRepository'
 import { UNSET_MUSCLE_LABEL } from '@/utils/exerciseGroups'
 import { formatHistorySets } from '@/utils/sessionFormat'
-import { isExercisePerformed } from '@/utils/sessionHistoryFormat'
+import {
+  formatSetDeviation,
+  isExercisePerformed,
+} from '@/utils/sessionHistoryFormat'
 import { StyleSheet, Text, View } from 'react-native'
 
 type SessionExerciseRowProps = {
@@ -23,6 +26,7 @@ function formatMuscles(exercise: WorkoutSessionHistoryExercise): string {
  */
 export function SessionExerciseRow({ exercise }: SessionExerciseRowProps) {
   const isPerformed = isExercisePerformed(exercise)
+  const setDeviation = formatSetDeviation(exercise)
 
   return (
     <View style={[styles.row, !isPerformed && styles.rowSkipped]}>
@@ -42,9 +46,15 @@ export function SessionExerciseRow({ exercise }: SessionExerciseRowProps) {
         )}
       </View>
 
-      <Text numberOfLines={1} style={styles.muscles}>
-        {formatMuscles(exercise)}
-      </Text>
+      <View style={styles.line}>
+        <Text numberOfLines={1} style={styles.muscles}>
+          {formatMuscles(exercise)}
+        </Text>
+
+        {setDeviation ? (
+          <Text style={styles.deviation}>{setDeviation}</Text>
+        ) : null}
+      </View>
     </View>
   )
 }
@@ -108,6 +118,13 @@ const styles = StyleSheet.create({
 
   muscles: {
     color: colors.textMuted,
+    flexShrink: 1,
     fontSize: 12,
+  },
+
+  deviation: {
+    color: colors.textSecondary,
+    fontSize: 11,
+    marginLeft: 'auto',
   },
 })

@@ -1,67 +1,68 @@
 import { dbPromise } from '@/db/database'
 import type {
-    ExerciseType,
-    Muscle,
+  ExerciseType,
+  Muscle,
 } from '@/types/entities'
 export type WorkoutSessionHistoryItem = {
-    id: string
-    workoutId: string
-    workoutName: string
-    startedAt: string
-    finishedAt: string
-    totalPausedDuration: number
-    performedExercises: number
-    plannedExercises: number
-    performedSets: number
+  id: string
+  workoutId: string
+  workoutName: string
+  startedAt: string
+  finishedAt: string
+  totalPausedDuration: number
+  performedExercises: number
+  plannedExercises: number
+  performedSets: number
 }
 
 export type WorkoutSessionHistoryExercise = {
-    sessionExerciseId: string
-    exerciseId: string
-    exerciseName: string
-    type: ExerciseType
-    position: number
-    isSkipped: boolean
-    repMin: number | null
-    repMax: number | null
+  sessionExerciseId: string
+  exerciseId: string
+  exerciseName: string
+  type: ExerciseType
+  position: number
+  isSkipped: boolean
+  plannedSets: number | null
+  repMin: number | null
+  repMax: number | null
 
-    primaryMuscle: Muscle | null
-    secondaryMuscles: Muscle[]
+  primaryMuscle: Muscle | null
+  secondaryMuscles: Muscle[]
 
-    sets: {
-        setNumber: number
-        weight: number | null
-        reps: number | null
-    }[]
+  sets: {
+    setNumber: number
+    weight: number | null
+    reps: number | null
+  }[]
 }
 
 export type WorkoutSessionHistoryDetails = {
-    id: string
-    workoutId: string
-    workoutName: string
-    startedAt: string
-    finishedAt: string
-    totalPausedDuration: number
-    exercises: WorkoutSessionHistoryExercise[]
+  id: string
+  workoutId: string
+  workoutName: string
+  startedAt: string
+  finishedAt: string
+  totalPausedDuration: number
+  exercises: WorkoutSessionHistoryExercise[]
 }
 
 export async function getWorkoutSessions(
-    workoutId?: string,
+  workoutId?: string,
 ): Promise<WorkoutSessionHistoryItem[]> {
-    const db = await dbPromise
+  const db = await dbPromise
 
-    const rows = await db.getAllAsync<{
-        id: string
-        workout_id: string
-        workout_name: string
-        started_at: string
-        finished_at: string
-        total_paused_duration: number
-        planned_exercises: number
-        performed_exercises: number
-        performed_sets: number
-    }>(
-        `
+  const rows = await db.getAllAsync<{
+    id: string
+    workout_id: string
+    workout_name: string
+    started_at: string
+    finished_at: string
+    total_paused_duration: number
+    planned_exercises: number
+    performed_exercises: number
+    performed_sets: number
+  }>(
+    `
       SELECT
         ws.id,
         ws.workout_id,
@@ -87,7 +88,8 @@ export async function getWorkoutSessions(
 
         COUNT(
           CASE
-            WHEN sr.reps IS NOT NULL
+            WHEN se.is_skipped = 0
+              AND sr.reps IS NOT NULL
             THEN sr.id
           END
         ) AS performed_sets
@@ -116,37 +118,37 @@ export async function getWorkoutSessions(
 
       ORDER BY ws.finished_at DESC;
     `,
-        workoutId ?? null,
-        workoutId ?? null,
-    )
+    workoutId ?? null,
+    workoutId ?? null,
+  )
 
-    return rows.map((row) => ({
-        id: row.id,
-        workoutId: row.workout_id,
-        workoutName: row.workout_name,
-        startedAt: row.started_at,
-        finishedAt: row.finished_at,
-        totalPausedDuration: row.total_paused_duration,
-        plannedExercises: row.planned_exercises,
-        performedExercises: row.performed_exercises,
-        performedSets: row.performed_sets,
-    }))
+  return rows.map((row) => ({
+    id: row.id,
+    workoutId: row.workout_id,
+    workoutName: row.workout_name,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    totalPausedDuration: row.total_paused_duration,
+    plannedExercises: row.planned_exercises,
+    performedExercises: row.performed_exercises,
+    performedSets: row.performed_sets,
+  }))
 }
 
 export async function getWorkoutSessionHistoryDetails(
-    sessionId: string,
+  sessionId: string,
 ): Promise<WorkoutSessionHistoryDetails | null> {
-    const db = await dbPromise
+  const db = await dbPromise
 
-    const session = await db.getFirstAsync<{
-        id: string
-        workout_id: string
-        workout_name: string
-        started_at: string
-        finished_at: string
-        total_paused_duration: number
-    }>(
-        `
+  const session = await db.getFirstAsync<{
+    id: string
+    workout_id: string
+    workout_name: string
+    started_at: string
+    finished_at: string
+    total_paused_duration: number
+  }>(
+    `
       SELECT
         ws.id,
         ws.workout_id,
@@ -162,29 +164,29 @@ export async function getWorkoutSessionHistoryDetails(
       WHERE ws.id = ?
         AND ws.finished_at IS NOT NULL;
     `,
-        sessionId,
-    )
+    sessionId,
+  )
 
-    if (!session) {
-        return null
-    }
-    const exerciseRows = await db.getAllAsync<{
-        session_exercise_id: string
-        exercise_id: string
-        exercise_name: string
-        exercise_type: ExerciseType
-        position: number
-        is_skipped: number
-        rep_min: number | null
-        rep_max: number | null
-
-        muscle_id: string | null
-        muscle_key: string | null
-        muscle_name: string | null
-        muscle_group: string | null
-        muscle_role: 'PRIMARY' | 'SECONDARY' | null
-    }>(
-        `
+  if (!session) {
+    return null
+  }
+  const exerciseRows = await db.getAllAsync<{
+    session_exercise_id: string
+    exercise_id: string
+    exercise_name: string
+    exercise_type: ExerciseType
+    position: number
+    is_skipped: number
+    rep_min: number | null
+    rep_max: number | null
+    planned_sets: number | null
+    muscle_id: string | null
+    muscle_key: string | null
+    muscle_name: string | null
+    muscle_group: string | null
+    muscle_role: 'PRIMARY' | 'SECONDARY' | null
+  }>(
+    `
       SELECT
         se.id AS session_exercise_id,
         se.exercise_id,
@@ -192,6 +194,7 @@ export async function getWorkoutSessionHistoryDetails(
         e.type AS exercise_type,
         se.position,
         se.is_skipped,
+        se.planned_sets,
         se.rep_min,
         se.rep_max,
 
@@ -217,62 +220,63 @@ export async function getWorkoutSessionHistoryDetails(
       ORDER BY
         se.position ASC;
     `,
-        sessionId,
-    )
-    const exerciseMap = new Map<
-        string,
-        WorkoutSessionHistoryExercise
-    >()
+    sessionId,
+  )
+  const exerciseMap = new Map<
+    string,
+    WorkoutSessionHistoryExercise
+  >()
 
-    for (const row of exerciseRows) {
-        let exercise = exerciseMap.get(row.session_exercise_id)
+  for (const row of exerciseRows) {
+    let exercise = exerciseMap.get(row.session_exercise_id)
 
-        if (!exercise) {
-            exercise = {
-                sessionExerciseId: row.session_exercise_id,
-                exerciseId: row.exercise_id,
-                exerciseName: row.exercise_name,
-                type: row.exercise_type,
-                position: row.position,
-                isSkipped: row.is_skipped === 1,
-                repMin: row.rep_min,
-                repMax: row.rep_max,
-                primaryMuscle: null,
-                secondaryMuscles: [],
-                sets: [],
-            }
+    if (!exercise) {
+      exercise = {
+        sessionExerciseId: row.session_exercise_id,
+        exerciseId: row.exercise_id,
+        exerciseName: row.exercise_name,
+        type: row.exercise_type,
+        position: row.position,
+        isSkipped: row.is_skipped === 1,
+        plannedSets: row.planned_sets,
+        repMin: row.rep_min,
+        repMax: row.rep_max,
+        primaryMuscle: null,
+        secondaryMuscles: [],
+        sets: [],
+      }
 
-            exerciseMap.set(row.session_exercise_id, exercise)
-        }
-
-        if (
-            row.muscle_id &&
-            row.muscle_key &&
-            row.muscle_name &&
-            row.muscle_group &&
-            row.muscle_role
-        ) {
-            const muscle: Muscle = {
-                id: row.muscle_id,
-                key: row.muscle_key as Muscle['key'],
-                name: row.muscle_name,
-                group: row.muscle_group as Muscle['group'],
-            }
-
-            if (row.muscle_role === 'PRIMARY') {
-                exercise.primaryMuscle = muscle
-            } else {
-                exercise.secondaryMuscles.push(muscle)
-            }
-        }
+      exerciseMap.set(row.session_exercise_id, exercise)
     }
-    const setRows = await db.getAllAsync<{
-        session_exercise_id: string
-        set_number: number
-        weight: number | null
-        reps: number | null
-    }>(
-        `
+
+    if (
+      row.muscle_id &&
+      row.muscle_key &&
+      row.muscle_name &&
+      row.muscle_group &&
+      row.muscle_role
+    ) {
+      const muscle: Muscle = {
+        id: row.muscle_id,
+        key: row.muscle_key as Muscle['key'],
+        name: row.muscle_name,
+        group: row.muscle_group as Muscle['group'],
+      }
+
+      if (row.muscle_role === 'PRIMARY') {
+        exercise.primaryMuscle = muscle
+      } else {
+        exercise.secondaryMuscles.push(muscle)
+      }
+    }
+  }
+  const setRows = await db.getAllAsync<{
+    session_exercise_id: string
+    set_number: number
+    weight: number | null
+    reps: number | null
+  }>(
+    `
       SELECT
         sr.session_exercise_id,
         sr.set_number,
@@ -291,38 +295,38 @@ export async function getWorkoutSessionHistoryDetails(
         se.position ASC,
         sr.set_number ASC;
     `,
-        sessionId,
-    )
-    for (const row of setRows) {
-        const exercise = exerciseMap.get(row.session_exercise_id)
+    sessionId,
+  )
+  for (const row of setRows) {
+    const exercise = exerciseMap.get(row.session_exercise_id)
 
-        if (!exercise) {
-            continue
-        }
-
-        exercise.sets.push({
-            setNumber: row.set_number,
-            weight: row.weight,
-            reps: row.reps,
-        })
+    if (!exercise) {
+      continue
     }
 
-    return {
-        id: session.id,
-        workoutId: session.workout_id,
-        workoutName: session.workout_name,
-        startedAt: session.started_at,
-        finishedAt: session.finished_at,
-        totalPausedDuration: session.total_paused_duration,
-        exercises: [...exerciseMap.values()],
-    }
+    exercise.sets.push({
+      setNumber: row.set_number,
+      weight: row.weight,
+      reps: row.reps,
+    })
+  }
+
+  return {
+    id: session.id,
+    workoutId: session.workout_id,
+    workoutName: session.workout_name,
+    startedAt: session.started_at,
+    finishedAt: session.finished_at,
+    totalPausedDuration: session.total_paused_duration,
+    exercises: [...exerciseMap.values()],
+  }
 }
 
 export type WorkoutWithSessions = {
-    id: string
-    name: string
-    isArchived: boolean
-    sessionCount: number
+  id: string
+  name: string
+  isArchived: boolean
+  sessionCount: number
 }
 
 /**
@@ -330,14 +334,14 @@ export type WorkoutWithSessions = {
  * history stays filterable after the workout itself is retired.
  */
 export async function getWorkoutsWithSessions(): Promise<WorkoutWithSessions[]> {
-    const db = await dbPromise
+  const db = await dbPromise
 
-    const rows = await db.getAllAsync<{
-        id: string
-        name: string
-        is_archived: number
-        session_count: number
-    }>(`
+  const rows = await db.getAllAsync<{
+    id: string
+    name: string
+    is_archived: number
+    session_count: number
+  }>(`
       SELECT
         w.id,
         w.name,
@@ -357,10 +361,10 @@ export async function getWorkoutsWithSessions(): Promise<WorkoutWithSessions[]> 
         w.name COLLATE NOCASE ASC;
     `)
 
-    return rows.map((row) => ({
-        id: row.id,
-        name: row.name,
-        isArchived: row.is_archived === 1,
-        sessionCount: row.session_count,
-    }))
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    isArchived: row.is_archived === 1,
+    sessionCount: row.session_count,
+  }))
 }

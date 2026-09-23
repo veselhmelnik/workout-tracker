@@ -49,7 +49,7 @@ export default function SessionDetailsScreen() {
   }
 
   const summary = summarizeSession(data)
-  const partialNote = describePartialSession(summary.skippedExercises)
+  const partialNote = describePartialSession(summary)
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>

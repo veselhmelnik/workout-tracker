@@ -101,7 +101,24 @@ export default function WorkoutsScreen() {
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.screenTitle}>My Workouts</Text>
+        {/* Settings lives outside the three tabs, reached from this header. */}
+        <View style={styles.titleRow}>
+          <Text style={styles.screenTitle}>My Workouts</Text>
+
+          <Pressable
+            accessibilityHint="Opens app settings"
+            accessibilityLabel="Settings"
+            accessibilityRole="button"
+            hitSlop={10}
+            onPress={() => router.push('/settings')}
+            style={({ pressed }) => [
+              styles.settingsButton,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.settingsLabel}>Settings</Text>
+          </Pressable>
+        </View>
 
         {isLoading && !data ? <LoadingView /> : null}
 
@@ -203,12 +220,31 @@ const styles = StyleSheet.create({
     paddingTop: spacing.md,
   },
 
+  titleRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 18,
+  },
+
   screenTitle: {
     color: colors.textPrimary,
     fontSize: fontSize.screenTitle,
     fontWeight: '700',
     letterSpacing: -0.56,
-    marginBottom: 18,
+  },
+
+  settingsButton: {
+    alignItems: 'flex-end',
+    justifyContent: 'center',
+    minHeight: 44,
+    minWidth: 60,
+  },
+
+  settingsLabel: {
+    color: colors.textSecondary,
+    fontSize: 13.5,
+    fontWeight: '600',
   },
 
   card: {

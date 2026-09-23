@@ -95,22 +95,24 @@ export async function startWorkout(
 
             await db.runAsync(
                 `
-          INSERT INTO session_exercises (
-            id,
-            workout_session_id,
-            exercise_id,
-            position,
-            is_skipped,
-            rep_min,
-            rep_max
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
+                    INSERT INTO session_exercises (
+                    id,
+                    workout_session_id,
+                    exercise_id,
+                    position,
+                    is_skipped,
+                    planned_sets,
+                    rep_min,
+                    rep_max
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                `,
                 sessionExerciseId,
                 session.id,
                 workoutExercise.exercise_id,
                 workoutExercise.position,
                 0,
+                workoutExercise.sets,
                 workoutExercise.rep_min,
                 workoutExercise.rep_max,
             )
