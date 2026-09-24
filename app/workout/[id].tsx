@@ -42,7 +42,7 @@ export default function EditWorkoutScreen() {
     addExerciseId,
   ])
 
-  const handleSave = async (draft: WorkoutDraft) => {
+  const handleSave = async (draft: WorkoutDraft): Promise<boolean> => {
     setIsSaving(true)
 
     try {
@@ -57,12 +57,20 @@ export default function EditWorkoutScreen() {
         })),
       })
 
+      // updateWorkout also syncs an unfinished session of this workout, in
+      // the same transaction.
       router.back()
+
+      return true
     } catch (saveError) {
+      // Nothing was written, including the active session; the editor keeps
+      // the draft and stays dirty.
       Alert.alert(
         'Could not save workout',
         saveError instanceof Error ? saveError.message : String(saveError),
       )
+
+      return false
     } finally {
       setIsSaving(false)
     }
@@ -117,6 +125,7 @@ export default function EditWorkoutScreen() {
       }}
       initialAddExercise={data.exerciseToAdd ?? undefined}
       isSaving={isSaving}
+      mode="edit"
       onArchive={handleArchive}
       onSave={handleSave}
       title="Edit Workout"

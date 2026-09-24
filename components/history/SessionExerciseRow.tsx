@@ -7,10 +7,12 @@ import {
   formatSetDeviation,
   isExercisePerformed,
 } from '@/utils/sessionHistoryFormat'
-import { StyleSheet, Text, View } from 'react-native'
+import { Pressable, StyleSheet, Text, View } from 'react-native'
 
 type SessionExerciseRowProps = {
   exercise: WorkoutSessionHistoryExercise
+  /** Opens the row's actions; the row is inert when omitted. */
+  onPress?: (exercise: WorkoutSessionHistoryExercise) => void
 }
 
 function formatMuscles(exercise: WorkoutSessionHistoryExercise): string {
@@ -25,12 +27,25 @@ function formatMuscles(exercise: WorkoutSessionHistoryExercise): string {
  * Name and result share the first line; muscles sit below. Skipped exercises
  * stay in place, dimmed and struck through, so the planned shape is readable.
  */
-export function SessionExerciseRow({ exercise }: SessionExerciseRowProps) {
+export function SessionExerciseRow({
+  exercise,
+  onPress,
+}: SessionExerciseRowProps) {
   const isPerformed = isExercisePerformed(exercise)
   const setDeviation = formatSetDeviation(exercise)
 
   return (
-    <View style={[styles.row, !isPerformed && styles.rowSkipped]}>
+    <Pressable
+      accessibilityHint={onPress ? 'Opens actions for this result' : undefined}
+      accessibilityRole={onPress ? 'button' : undefined}
+      disabled={!onPress}
+      onPress={() => onPress?.(exercise)}
+      style={({ pressed }) => [
+        styles.row,
+        !isPerformed && styles.rowSkipped,
+        pressed && styles.rowPressed,
+      ]}
+    >
       <View style={styles.line}>
         <Text
           style={[styles.name, !isPerformed && styles.nameSkipped]}
@@ -60,7 +75,7 @@ export function SessionExerciseRow({ exercise }: SessionExerciseRowProps) {
           <Text style={styles.deviation}>{setDeviation}</Text>
         ) : null}
       </View>
-    </View>
+    </Pressable>
   )
 }
 
@@ -74,6 +89,10 @@ const styles = StyleSheet.create({
 
   rowSkipped: {
     opacity: 0.55,
+  },
+
+  rowPressed: {
+    opacity: 0.6,
   },
 
   line: {

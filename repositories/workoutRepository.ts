@@ -2,6 +2,7 @@ import * as Crypto from 'expo-crypto'
 
 import { dbPromise } from '@/db/database'
 import type { Workout } from '@/types/entities'
+import { syncActiveSessionWithinTransaction } from './activeSessionSync'
 
 type CreateWorkoutExerciseInput = {
   exerciseId: string
@@ -275,6 +276,21 @@ export async function updateWorkout(
         exercise.position,
       )
     }
+
+    // Same transaction as the template write: an unfinished session for this
+    // workout either follows the saved template or nothing is committed.
+    await syncActiveSessionWithinTransaction(
+      db,
+      workoutId,
+      [...input.exercises]
+        .sort((a, b) => a.position - b.position)
+        .map((exercise) => ({
+          exerciseId: exercise.exerciseId,
+          sets: exercise.sets,
+          repMin: exercise.repMin,
+          repMax: exercise.repMax,
+        })),
+    )
   })
 }
 

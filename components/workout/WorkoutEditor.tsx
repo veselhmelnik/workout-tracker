@@ -4,7 +4,8 @@ import { ScreenHeader } from '@/components/ui/ScreenHeader'
 import { colors, fontSize, gutter, radius, spacing } from '@/constants/theme'
 import type { Exercise, ExerciseType } from '@/types/entities'
 import { formatSetTarget } from '@/utils/format'
-import { useState } from 'react'
+import { useNavigation } from 'expo-router'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   KeyboardAvoidingView,
@@ -15,7 +16,10 @@ import {
   Text,
   View,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context'
 import {
   ExerciseConfigModal,
   type ExerciseConfig,
@@ -43,9 +47,11 @@ type EditorTarget =
 
 type WorkoutEditorProps = {
   title: string
+  mode: 'create' | 'edit'
   initialDraft: WorkoutDraft
   isSaving: boolean
-  onSave: (draft: WorkoutDraft) => void
+  /** Resolves true once the workout is persisted; false leaves the form as is. */
+  onSave: (draft: WorkoutDraft) => Promise<boolean>
   onArchive?: () => void
   /** Opens the exercise configuration straight away (Add to a workout). */
   initialAddExercise?: Exercise
@@ -53,14 +59,31 @@ type WorkoutEditorProps = {
 
 const DEFAULT_SETS = 3
 
+/** Everything persisted about a workout, for comparing against the baseline. */
+function serializeDraft(draft: WorkoutDraft): string {
+  return JSON.stringify({
+    name: draft.name.trim(),
+    exercises: draft.exercises.map((exercise) => [
+      exercise.exerciseId,
+      exercise.sets,
+      exercise.repMin,
+      exercise.repMax,
+    ]),
+  })
+}
+
 export function WorkoutEditor({
   title,
+  mode,
   initialDraft,
   isSaving,
   onSave,
   onArchive,
   initialAddExercise,
 }: WorkoutEditorProps) {
+  const navigation = useNavigation()
+  const insets = useSafeAreaInsets()
+
   const [name, setName] = useState(initialDraft.name)
   const [exercises, setExercises] = useState(initialDraft.exercises)
 
@@ -82,7 +105,58 @@ export function WorkoutEditor({
   })
 
   const trimmedName = name.trim()
-  const canSave = trimmedName.length > 0 && !isSaving
+
+  const baseline = useMemo(() => serializeDraft(initialDraft), [initialDraft])
+  const draft: WorkoutDraft = { name: trimmedName, exercises }
+  const isDirty = serializeDraft(draft) !== baseline
+
+  // Creating needs a name; editing also needs something to save.
+  const canSave =
+    trimmedName.length > 0 && !isSaving && (mode === 'create' || isDirty)
+
+  // Set before the parent navigates on success, so the guard below lets the
+  // screen go without prompting.
+  const isLeavingRef = useRef(false)
+
+  const handleSave = async () => {
+    if (!canSave) {
+      return
+    }
+
+    isLeavingRef.current = true
+
+    if (!(await onSave(draft))) {
+      // Save failed: the form keeps its values and stays dirty.
+      isLeavingRef.current = false
+    }
+  }
+
+  // Covers the header back button, the Android hardware back button and the
+  // back gesture, since all of them dispatch a navigation action.
+  useEffect(() => {
+    const subscription = navigation.addListener('beforeRemove', (event) => {
+      if (!isDirty || isLeavingRef.current) {
+        return
+      }
+
+      event.preventDefault()
+
+      Alert.alert(
+        'Discard changes?',
+        'You have unsaved changes. If you leave now, they will be lost.',
+        [
+          { text: 'Keep Editing', style: 'cancel' },
+          {
+            text: 'Discard Changes',
+            style: 'destructive',
+            onPress: () => navigation.dispatch(event.data.action),
+          },
+        ],
+      )
+    })
+
+    return subscription
+  }, [isDirty, navigation])
 
   const move = (index: number, direction: -1 | 1) => {
     const nextIndex = index + direction
@@ -173,12 +247,8 @@ export function WorkoutEditor({
 
   return (
     <SafeAreaView edges={['top']} style={styles.container}>
-      <ScreenHeader
-        actionDisabled={!canSave}
-        actionLabel="Save"
-        onAction={() => onSave({ name: trimmedName, exercises })}
-        title={title}
-      />
+      {/* Saving lives in the footer, so the header holds one clear action. */}
+      <ScreenHeader title={title} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -285,6 +355,22 @@ export function WorkoutEditor({
             </View>
           ) : null}
         </ScrollView>
+
+        {/* Footer sits inside the keyboard-avoiding area, so it rides above
+            the keyboard and never covers the exercise rows being edited. */}
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: Math.max(insets.bottom, spacing.md) },
+          ]}
+        >
+          <Button
+            busy={isSaving}
+            disabled={!canSave}
+            label={mode === 'create' ? 'Create Workout' : 'Save Changes'}
+            onPress={handleSave}
+          />
+        </View>
       </KeyboardAvoidingView>
 
       <ExercisePickerModal
@@ -397,6 +483,14 @@ const styles = StyleSheet.create({
 
   archive: {
     marginTop: spacing.xxl,
+  },
+
+  footer: {
+    backgroundColor: colors.background,
+    borderTopColor: colors.divider,
+    borderTopWidth: 1,
+    paddingHorizontal: gutter,
+    paddingTop: spacing.md,
   },
 
   pressed: {

@@ -348,6 +348,117 @@ export async function getWorkoutSessionHistoryDetails(
   }
 }
 
+/**
+ * Permanently removes a finished session from history. Only finished sessions
+ * qualify: an active workout is cancelled from the session screen, not here.
+ *
+ * Deleting the parent row is enough — 001_initial.sql cascades from
+ * workout_sessions to session_exercises to set_records. The workout template
+ * and the exercises themselves are untouched, and archived workouts or
+ * exercises are deletable too: archive state does not protect a mistake.
+ */
+export async function deleteWorkoutSessionHistory(
+  sessionId: string,
+): Promise<void> {
+  const db = await dbPromise
+
+  const session = await db.getFirstAsync<{ id: string }>(
+    `
+      SELECT id
+      FROM workout_sessions
+      WHERE id = ?
+        AND finished_at IS NOT NULL
+    `,
+    sessionId,
+  )
+
+  if (!session) {
+    throw new Error('This workout is no longer in your history.')
+  }
+
+  await db.runAsync(
+    `
+      DELETE FROM workout_sessions
+      WHERE id = ?
+        AND finished_at IS NOT NULL
+    `,
+    sessionId,
+  )
+}
+
+/**
+ * Removes one recorded exercise from a finished session. When it is the last
+ * remaining exercise the whole session goes, so history never keeps an empty
+ * "0 exercises · 0 sets" row.
+ *
+ * Guard and delete run in one transaction; set_records cascade with the row.
+ */
+export async function deleteSessionExerciseHistory(
+  sessionExerciseId: string,
+): Promise<{ deletedSession: boolean }> {
+  const db = await dbPromise
+
+  let deletedSession = false
+
+  await db.withTransactionAsync(async () => {
+    const occurrence = await db.getFirstAsync<{
+      id: string
+      workout_session_id: string
+      remaining: number
+    }>(
+      `
+        SELECT
+          se.id,
+          se.workout_session_id,
+
+          (
+            SELECT COUNT(*)
+            FROM session_exercises other
+            WHERE other.workout_session_id = se.workout_session_id
+          ) AS remaining
+
+        FROM session_exercises se
+
+        JOIN workout_sessions ws
+          ON ws.id = se.workout_session_id
+
+        WHERE se.id = ?
+          AND ws.finished_at IS NOT NULL
+      `,
+      sessionExerciseId,
+    )
+
+    if (!occurrence) {
+      throw new Error('This exercise result is no longer in your history.')
+    }
+
+    if (occurrence.remaining <= 1) {
+      await db.runAsync(
+        `
+          DELETE FROM workout_sessions
+          WHERE id = ?
+            AND finished_at IS NOT NULL
+        `,
+        occurrence.workout_session_id,
+      )
+
+      deletedSession = true
+
+      return
+    }
+
+    await db.runAsync(
+      `
+        DELETE FROM session_exercises
+        WHERE id = ?
+      `,
+      sessionExerciseId,
+    )
+  })
+
+  return { deletedSession }
+}
+
 export type WorkoutWithSessions = {
   id: string
   name: string

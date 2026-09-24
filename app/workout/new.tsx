@@ -13,7 +13,7 @@ export default function NewWorkoutScreen() {
   const router = useRouter()
   const [isSaving, setIsSaving] = useState(false)
 
-  const handleSave = async (draft: WorkoutDraft) => {
+  const handleSave = async (draft: WorkoutDraft): Promise<boolean> => {
     setIsSaving(true)
 
     try {
@@ -29,11 +29,16 @@ export default function NewWorkoutScreen() {
       })
 
       router.back()
+
+      return true
     } catch (error) {
+      // The editor keeps the draft and stays dirty.
       Alert.alert(
         'Could not save workout',
         error instanceof Error ? error.message : String(error),
       )
+
+      return false
     } finally {
       setIsSaving(false)
     }
@@ -43,6 +48,7 @@ export default function NewWorkoutScreen() {
     <WorkoutEditor
       initialDraft={EMPTY_DRAFT}
       isSaving={isSaving}
+      mode="create"
       onSave={handleSave}
       title="New Workout"
     />
