@@ -9,7 +9,8 @@ import {
 import { RecentResultsSheet } from '@/components/session/RecentResultsSheet'
 import { SessionHeader } from '@/components/session/SessionHeader'
 import { EmptyView, ErrorView, LoadingView } from '@/components/ui/StateViews'
-import { colors } from '@/constants/theme'
+import { Button } from '@/components/ui/Button'
+import { colors, gutter, spacing } from '@/constants/theme'
 import { useSessionTimer } from '@/hooks/useSessionTimer'
 import {
   getRecentExerciseHistory,
@@ -17,6 +18,7 @@ import {
 } from '@/repositories/historyRepository'
 import {
   addSet,
+  cancelWorkoutSession,
   finishWorkout,
   getWorkoutSessionDetails,
   pauseWorkout,
@@ -41,11 +43,16 @@ import {
   FlatList,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   StyleSheet,
+  Text,
   View,
   useWindowDimensions,
 } from 'react-native'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context'
 
 type SessionExercise = WorkoutSessionDetails['exercises'][number]
 
@@ -69,6 +76,7 @@ export default function ActiveSessionScreen() {
   const router = useRouter()
   const { id } = useLocalSearchParams<{ id: string }>()
   const { width } = useWindowDimensions()
+  const insets = useSafeAreaInsets()
 
   const listRef = useRef<FlatList<SessionExercise>>(null)
 
@@ -94,6 +102,7 @@ export default function ActiveSessionScreen() {
 
   const [isFinishSheetOpen, setIsFinishSheetOpen] = useState(false)
   const [isFinishing, setIsFinishing] = useState(false)
+  const isCancellingRef = useRef(false)
 
   const elapsedMs = useSessionTimer(details)
   const isPaused = Boolean(details?.pausedAt)
@@ -339,6 +348,51 @@ export default function ActiveSessionScreen() {
     }
   }
 
+  const handleCancel = () => {
+    Alert.alert(
+      'Cancel workout?',
+      "This workout and all recorded sets from this session will be discarded. This can't be undone.",
+      [
+        { text: 'Keep Workout', style: 'cancel' },
+        {
+          text: 'Cancel Workout',
+          style: 'destructive',
+          onPress: async () => {
+            if (isCancellingRef.current) {
+              return
+            }
+
+            isCancellingRef.current = true
+
+            try {
+              await cancelWorkoutSession(id)
+
+              // Pending edits belong to rows that no longer exist; drop them
+              // so the unmount flush cannot write them back.
+              dirtyRef.current.clear()
+
+              if (router.canDismiss()) {
+                router.dismissTo('/')
+              } else {
+                router.replace('/')
+              }
+            } catch (cancelError) {
+              // Stay on the session; its data is untouched and still usable.
+              Alert.alert(
+                'Could not cancel workout',
+                cancelError instanceof Error
+                  ? cancelError.message
+                  : String(cancelError),
+              )
+            } finally {
+              isCancellingRef.current = false
+            }
+          },
+        },
+      ],
+    )
+  }
+
   const summary = buildSummary(details, drafts, elapsedMs)
 
   if (isLoading && !details) {
@@ -361,25 +415,31 @@ export default function ActiveSessionScreen() {
   }
 
   return (
-    <SafeAreaView edges={['top', 'bottom']} style={styles.container}>
+    <SafeAreaView edges={['top']} style={styles.container}>
       <SessionHeader
         elapsedMs={elapsedMs}
         index={index}
         isPaused={isPaused}
-        onFinish={() => setIsFinishSheetOpen(true)}
+        onBack={() => {
+          if (router.canGoBack()) {
+            router.back()
+          }
+        }}
         onNext={() => goToIndex(index + 1)}
         onPrevious={() => goToIndex(index - 1)}
         onTogglePause={handleTogglePause}
         total={details.exercises.length}
       />
 
-      {details.exercises.length === 0 ? (
-        <EmptyView message="This session has no exercises." />
-      ) : (
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.flex}
-        >
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
+      >
+        {details.exercises.length === 0 ? (
+          <View style={styles.flex}>
+            <EmptyView message="This session has no exercises." />
+          </View>
+        ) : (
           <FlatList
             data={details.exercises}
             getItemLayout={(_, itemIndex) => ({
@@ -440,8 +500,39 @@ export default function ActiveSessionScreen() {
             )}
             showsHorizontalScrollIndicator={false}
           />
-        </KeyboardAvoidingView>
-      )}
+        )}
+
+        {/* Session lifecycle actions, separated from the navigation header.
+            Sits outside the paging list, so exercise content keeps its own
+            scroll area and the footer never covers set inputs, + Set or Skip.
+            Inside the keyboard-avoiding area so it rides above the keyboard
+            instead of hiding behind it. */}
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: Math.max(insets.bottom, spacing.md) },
+          ]}
+        >
+          <Button
+            busy={isFinishing}
+            label="Finish Workout"
+            onPress={() => setIsFinishSheetOpen(true)}
+          />
+
+          <Pressable
+            accessibilityHint="Discards this workout without saving it"
+            accessibilityRole="button"
+            disabled={isFinishing}
+            onPress={handleCancel}
+            style={({ pressed }) => [
+              styles.cancelButton,
+              pressed && styles.cancelPressed,
+            ]}
+          >
+            <Text style={styles.cancelLabel}>Cancel Workout</Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
 
       <RecentResultsSheet
         exerciseName={recentExercise?.name ?? ''}
@@ -513,6 +604,31 @@ const styles = StyleSheet.create({
   flex: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+
+  footer: {
+    backgroundColor: colors.background,
+    borderTopColor: colors.divider,
+    borderTopWidth: 1,
+    gap: spacing.xs,
+    paddingHorizontal: gutter,
+    paddingTop: spacing.md,
+  },
+
+  cancelButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+
+  cancelPressed: {
+    opacity: 0.6,
+  },
+
+  cancelLabel: {
+    color: colors.destructive,
+    fontSize: 14.5,
+    fontWeight: '600',
   },
 
   gate: {

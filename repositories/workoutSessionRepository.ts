@@ -562,6 +562,40 @@ export async function finishWorkout(
     })
 }
 
+/**
+ * Permanently discards an unfinished session: the row, its session_exercises
+ * and their set_records all go, so nothing reaches History. Finished sessions
+ * are refused here, not only in the UI, so this API can never delete history.
+ *
+ * Deleting the parent is enough — 001_initial.sql declares ON DELETE CASCADE
+ * from workout_sessions to session_exercises to set_records, and migrateDb
+ * enables PRAGMA foreign_keys on this connection.
+ */
+export async function cancelWorkoutSession(
+    sessionId: string,
+): Promise<void> {
+    const db = await dbPromise
+
+    const session = await getWorkoutSessionById(sessionId)
+
+    if (!session) {
+        throw new Error('Workout session not found')
+    }
+
+    if (session.finishedAt) {
+        throw new Error('A finished workout cannot be cancelled')
+    }
+
+    await db.runAsync(
+        `
+      DELETE FROM workout_sessions
+      WHERE id = ?
+        AND finished_at IS NULL
+    `,
+        sessionId,
+    )
+}
+
 export async function getActiveWorkoutSession(): Promise<WorkoutSession | null> {
     const db = await dbPromise
 

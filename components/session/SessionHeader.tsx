@@ -10,9 +10,10 @@ type SessionHeaderProps = {
   onPrevious: () => void
   onNext: () => void
   onTogglePause: () => void
-  onFinish: () => void
+  onBack: () => void
 }
 
+/** Navigation and timer only; finishing and cancelling live in the footer. */
 export function SessionHeader({
   index,
   total,
@@ -21,13 +22,23 @@ export function SessionHeader({
   onPrevious,
   onNext,
   onTogglePause,
-  onFinish,
+  onBack,
 }: SessionHeaderProps) {
   const canGoBack = index > 0
   const canGoForward = index < total - 1
 
   return (
     <View style={styles.container}>
+      <Pressable
+        accessibilityHint="Leaves this screen; the workout keeps running"
+        accessibilityLabel="Back"
+        accessibilityRole="button"
+        onPress={onBack}
+        style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+      >
+        <View style={styles.backChevron} />
+      </Pressable>
+
       <View style={styles.pager}>
         <Pressable
           accessibilityLabel="Previous exercise"
@@ -73,24 +84,14 @@ export function SessionHeader({
         </Text>
       </View>
 
-      <View style={styles.actions}>
-        <Pressable
-          accessibilityLabel={isPaused ? 'Resume workout' : 'Pause workout'}
-          accessibilityRole="button"
-          onPress={onTogglePause}
-          style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
-        >
-          {isPaused ? <ResumeGlyph /> : <PauseGlyph />}
-        </Pressable>
-
-        <Pressable
-          accessibilityRole="button"
-          onPress={onFinish}
-          style={({ pressed }) => [styles.finishButton, pressed && styles.pressed]}
-        >
-          <Text style={styles.finishLabel}>Finish</Text>
-        </Pressable>
-      </View>
+      <Pressable
+        accessibilityLabel={isPaused ? 'Resume workout' : 'Pause workout'}
+        accessibilityRole="button"
+        onPress={onTogglePause}
+        style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}
+      >
+        {isPaused ? <ResumeGlyph /> : <PauseGlyph />}
+      </Pressable>
     </View>
   )
 }
@@ -188,21 +189,14 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
 
-  actions: {
-    alignItems: 'center',
-    flexDirection: 'row',
-  },
-
-  finishButton: {
-    height: 44,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.sm,
-  },
-
-  finishLabel: {
-    color: colors.textPrimary,
-    fontSize: 14.5,
-    fontWeight: '600',
+  backChevron: {
+    borderBottomWidth: 2,
+    borderColor: colors.textSecondary,
+    borderLeftWidth: 2,
+    height: 10,
+    marginLeft: 3,
+    transform: [{ rotate: '45deg' }],
+    width: 10,
   },
 
   glyph: {

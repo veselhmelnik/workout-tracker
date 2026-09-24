@@ -1,29 +1,16 @@
 {
   "expo": {
-    "name": "workout-tracker",
-    "slug": "workout-tracker",
-    "version": "1.0.0",
-    "orientation": "portrait",
+    "name": "Setline",
+    "slug": "setline",
+    "scheme": "setline",
     "icon": "./assets/images/icon.png",
-    "scheme": "workouttracker",
-    "userInterfaceStyle": "dark",
-    "ios": {
-      "supportsTablet": true
-    },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#0F1215",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false,
       "package": "com.hmelnik.workouttracker"
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-router",
@@ -31,19 +18,17 @@
         "expo-splash-screen",
         {
           "image": "./assets/images/splash-icon.png",
+          "imageWidth": 160,
           "resizeMode": "contain",
           "backgroundColor": "#0F1215"
         }
       ],
       "expo-sqlite"
     ],
-    "experiments": {
-      "typedRoutes": true
-    },
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "26d03101-6234-4010-ac3f-d89bbe112a76"
+        "projectId": "a072f0cc-87f9-4acc-9e08-8af24b106012"
       }
     }
   }

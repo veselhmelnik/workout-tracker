@@ -1,10 +1,19 @@
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { Button } from '@/components/ui/Button'
 import { ScreenHeader } from '@/components/ui/ScreenHeader'
+import { PRIVACY_POLICY_URL } from '@/constants/legal'
 import { colors, gutter, labelText, spacing } from '@/constants/theme'
 import Constants from 'expo-constants'
+import * as WebBrowser from 'expo-web-browser'
 import { useState } from 'react'
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import {
+  Alert,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 type ProFeature = {
@@ -22,6 +31,18 @@ const PRO_FEATURES: ProFeature[] = [
     description: 'Export your training history.',
   },
 ]
+
+/** Opens the hosted policy in the in-app browser; failures stay on Settings. */
+async function openPrivacyPolicy() {
+  try {
+    await WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL)
+  } catch (error) {
+    Alert.alert(
+      'Could not open the Privacy Policy',
+      error instanceof Error ? error.message : String(error),
+    )
+  }
+}
 
 export default function SettingsScreen() {
   const [sheetFeature, setSheetFeature] = useState<ProFeature | null>(null)
@@ -58,6 +79,23 @@ export default function SettingsScreen() {
         ))}
 
         <Text style={styles.sectionLabel}>App</Text>
+
+        <Pressable
+          accessibilityHint="Opens the policy in your browser"
+          accessibilityLabel="Privacy Policy. How Setline handles your data"
+          accessibilityRole="button"
+          onPress={openPrivacyPolicy}
+          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+        >
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Privacy Policy</Text>
+            <Text style={styles.rowDescription}>
+              How Setline handles your data
+            </Text>
+          </View>
+
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
 
         <View style={styles.aboutRow}>
           <Text style={styles.rowTitle}>About</Text>
