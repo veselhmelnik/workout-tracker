@@ -32,6 +32,12 @@ export type WorkoutSessionHistoryExercise = {
   isSkipped: boolean
   /** Derived: this occurrence beat every earlier one of the same exercise. */
   isPr: boolean
+  /**
+   * The exercise the workout planned for this slot. Equal to the performed
+   * exercise unless it was replaced during the session, and null only for
+   * sessions predating migration 008.
+   */
+  plannedExercise: { id: string; name: string } | null
   plannedSets: number | null
   repMin: number | null
   repMax: number | null
@@ -189,6 +195,8 @@ export async function getWorkoutSessionHistoryDetails(
     exercise_id: string
     exercise_name: string
     exercise_type: ExerciseType
+    planned_exercise_id: string | null
+    planned_exercise_name: string | null
     position: number
     is_skipped: number
     rep_min: number | null
@@ -206,6 +214,10 @@ export async function getWorkoutSessionHistoryDetails(
         se.exercise_id,
         e.name AS exercise_name,
         e.type AS exercise_type,
+
+        se.planned_exercise_id,
+        pe.name AS planned_exercise_name,
+
         se.position,
         se.is_skipped,
         se.planned_sets,
@@ -222,6 +234,13 @@ export async function getWorkoutSessionHistoryDetails(
 
       JOIN exercises e
         ON e.id = se.exercise_id
+
+      -- Left join on two counts: planned_exercise_id is null for pre-008
+      -- sessions, and the planned exercise may since have been archived.
+      -- Neither may drop the result from history. It is a lookup on the
+      -- primary key, so it cannot multiply rows.
+      LEFT JOIN exercises pe
+        ON pe.id = se.planned_exercise_id
 
       LEFT JOIN exercise_muscles em
         ON em.exercise_id = e.id
@@ -253,6 +272,15 @@ export async function getWorkoutSessionHistoryDetails(
         position: row.position,
         isSkipped: row.is_skipped === 1,
         isPr: false,
+
+        plannedExercise:
+          row.planned_exercise_id && row.planned_exercise_name
+            ? {
+              id: row.planned_exercise_id,
+              name: row.planned_exercise_name,
+            }
+            : null,
+
         plannedSets: row.planned_sets,
         repMin: row.rep_min,
         repMax: row.rep_max,

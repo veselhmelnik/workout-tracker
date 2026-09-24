@@ -5,6 +5,7 @@ import { UNSET_MUSCLE_LABEL } from '@/utils/exerciseGroups'
 import { formatHistorySets } from '@/utils/sessionFormat'
 import {
   formatSetDeviation,
+  getReplacedExerciseName,
   isExercisePerformed,
 } from '@/utils/sessionHistoryFormat'
 import { Pressable, StyleSheet, Text, View } from 'react-native'
@@ -24,6 +25,38 @@ function formatMuscles(exercise: WorkoutSessionHistoryExercise): string {
 }
 
 /**
+ * Spoken as one row, so the replacement context carries to a screen reader
+ * rather than living only in the secondary line.
+ */
+function buildAccessibilityLabel(
+  exercise: WorkoutSessionHistoryExercise,
+  replacedName: string | null,
+  setDeviation: string | null,
+): string {
+  const parts = [exercise.exerciseName]
+
+  if (replacedName) {
+    parts.push(`instead of ${replacedName}`)
+  }
+
+  if (isExercisePerformed(exercise)) {
+    parts.push(formatHistorySets(exercise, exercise.type))
+
+    if (exercise.isPr) {
+      parts.push('personal record')
+    }
+
+    if (setDeviation) {
+      parts.push(setDeviation)
+    }
+  } else {
+    parts.push('skipped')
+  }
+
+  return parts.join(', ')
+}
+
+/**
  * Name and result share the first line; muscles sit below. Skipped exercises
  * stay in place, dimmed and struck through, so the planned shape is readable.
  */
@@ -34,9 +67,17 @@ export function SessionExerciseRow({
   const isPerformed = isExercisePerformed(exercise)
   const setDeviation = formatSetDeviation(exercise)
 
+  // What the workout planned here, when the session performed something else.
+  const replacedName = getReplacedExerciseName(exercise)
+
   return (
     <Pressable
       accessibilityHint={onPress ? 'Opens actions for this result' : undefined}
+      accessibilityLabel={buildAccessibilityLabel(
+        exercise,
+        replacedName,
+        setDeviation,
+      )}
       accessibilityRole={onPress ? 'button' : undefined}
       disabled={!onPress}
       onPress={() => onPress?.(exercise)}
@@ -65,6 +106,14 @@ export function SessionExerciseRow({
           <Text style={styles.skippedTag}>SKIPPED</Text>
         )}
       </View>
+
+      {/* Ordinary workout information, so it takes the muted secondary style
+          rather than a badge or a warning colour. */}
+      {replacedName ? (
+        <Text numberOfLines={1} style={styles.replacedFrom}>
+          Instead of {replacedName}
+        </Text>
+      ) : null}
 
       <View style={styles.line}>
         <Text numberOfLines={1} style={styles.muscles}>
@@ -146,6 +195,11 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingHorizontal: 6,
     paddingVertical: 2,
+  },
+
+  replacedFrom: {
+    color: colors.textSecondary,
+    fontSize: 12,
   },
 
   muscles: {

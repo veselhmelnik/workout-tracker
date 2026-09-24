@@ -83,6 +83,26 @@ export function isExercisePerformed(
 }
 
 /**
+ * The exercise this slot originally planned, when the session ended up
+ * performing something else in it. Null for a normal result, so callers can
+ * treat "no replacement" and "planned exercise unknown" (pre-008 sessions,
+ * where planned_exercise_id is null) identically.
+ *
+ * Derived from the two ids on every read; nothing stores a replacement flag.
+ */
+export function getReplacedExerciseName(
+  exercise: WorkoutSessionHistoryExercise,
+): string | null {
+  const planned = exercise.plannedExercise
+
+  if (!planned || planned.id === exercise.exerciseId) {
+    return null
+  }
+
+  return planned.name
+}
+
+/**
  * "2 of 3 sets" when a performed exercise recorded more or fewer sets than the
  * session snapshot planned. Null when it matched, when nothing was planned
  * (older sessions have no snapshot) or when the exercise was skipped.

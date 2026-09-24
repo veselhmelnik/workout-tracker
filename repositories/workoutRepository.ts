@@ -1,11 +1,17 @@
 import * as Crypto from 'expo-crypto'
 
 import { dbPromise } from '@/db/database'
-import type { Workout } from '@/types/entities'
+import type { Exercise, Workout } from '@/types/entities'
+import {
+  getWorkoutExerciseAlternativesForWorkout,
+  setWorkoutExerciseAlternativesWithinTransaction,
+} from './workoutExerciseAlternativesRepository'
 import { syncActiveSessionWithinTransaction } from './activeSessionSync'
 
 type CreateWorkoutExerciseInput = {
   exerciseId: string
+  /** Configured slot alternatives, in order; empty when none. */
+  alternativeExerciseIds: string[]
   sets: number
   repMin: number | null
   repMax: number | null
@@ -18,6 +24,8 @@ type CreateWorkoutInput = {
 }
 type UpdateWorkoutExerciseInput = {
   exerciseId: string
+  /** Configured slot alternatives, in order; empty when none. */
+  alternativeExerciseIds: string[]
   sets: number
   repMin: number | null
   repMax: number | null
@@ -28,11 +36,19 @@ type UpdateWorkoutInput = {
   name: string
   exercises: UpdateWorkoutExerciseInput[]
 }
+
+/**
+ * Positions are unique per workout, so rows are parked above any value the
+ * new layout can use before being renumbered.
+ */
+const POSITION_OFFSET = 10_000
 export type WorkoutDetails = Workout & {
   exercises: {
     id: string
     exerciseId: string
     name: string
+    /** Configured alternatives for this slot, archived ones included. */
+    alternatives: Exercise[]
     type: 'WEIGHTED' | 'BODYWEIGHT'
     sets: number
     repMin: number | null
@@ -81,6 +97,10 @@ export async function createWorkout(
     )
 
     for (const exercise of input.exercises) {
+      // Generated here so alternatives can be attached to the slot in this
+      // same transaction, without reopening the editor after creation.
+      const workoutExerciseId = Crypto.randomUUID()
+
       await db.runAsync(
         `
           INSERT INTO workout_exercises (
@@ -94,13 +114,19 @@ export async function createWorkout(
           )
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
-        Crypto.randomUUID(),
+        workoutExerciseId,
         workout.id,
         exercise.exerciseId,
         exercise.sets,
         exercise.repMin,
         exercise.repMax,
         exercise.position
+      )
+
+      await setWorkoutExerciseAlternativesWithinTransaction(
+        db,
+        workoutExerciseId,
+        exercise.alternativeExerciseIds,
       )
     }
   })
@@ -166,6 +192,9 @@ export async function getWorkoutById(
     id,
   )
 
+  // One batched query for every slot's alternatives, not one per exercise.
+  const alternativesBySlot = await getWorkoutExerciseAlternativesForWorkout(id)
+
   return {
     id: workout.id,
     name: workout.name,
@@ -177,6 +206,7 @@ export async function getWorkoutById(
       id: exercise.id,
       exerciseId: exercise.exercise_id,
       name: exercise.name,
+      alternatives: alternativesBySlot.get(exercise.id) ?? [],
       type: exercise.type,
       sets: exercise.sets,
       repMin: exercise.rep_min,
@@ -245,15 +275,88 @@ export async function updateWorkout(
       workoutId,
     )
 
-    await db.runAsync(
+    // Slot rows are updated in place rather than rebuilt, so their ids stay
+    // stable across saves. Anything keyed to a slot — configured alternatives
+    // above all — would be destroyed by a delete-all/insert-all rewrite.
+    const existingRows = await db.getAllAsync<{
+      id: string
+      exercise_id: string
+    }>(
       `
-        DELETE FROM workout_exercises
+        SELECT
+          id,
+          exercise_id
+        FROM workout_exercises
         WHERE workout_id = ?
       `,
       workoutId,
     )
 
+    const existingByExerciseId = new Map(
+      existingRows.map((row) => [row.exercise_id, row]),
+    )
+
+    const keptExerciseIds = new Set(
+      input.exercises.map((exercise) => exercise.exerciseId),
+    )
+
+    for (const row of existingRows) {
+      if (!keptExerciseIds.has(row.exercise_id)) {
+        await db.runAsync(
+          `
+            DELETE FROM workout_exercises
+            WHERE id = ?
+          `,
+          row.id,
+        )
+      }
+    }
+
+    // Park retained rows above every final position first: swapping two
+    // neighbours would otherwise collide with UNIQUE(workout_id, position)
+    // midway through the renumbering.
+    await db.runAsync(
+      `
+        UPDATE workout_exercises
+        SET position = position + ?
+        WHERE workout_id = ?
+      `,
+      POSITION_OFFSET,
+      workoutId,
+    )
+
     for (const exercise of input.exercises) {
+      const existing = existingByExerciseId.get(exercise.exerciseId)
+
+      if (existing) {
+        await db.runAsync(
+          `
+            UPDATE workout_exercises
+            SET
+              sets = ?,
+              rep_min = ?,
+              rep_max = ?,
+              position = ?
+            WHERE id = ?
+          `,
+          exercise.sets,
+          exercise.repMin,
+          exercise.repMax,
+          exercise.position,
+          existing.id,
+        )
+
+        await setWorkoutExerciseAlternativesWithinTransaction(
+          db,
+          existing.id,
+          exercise.alternativeExerciseIds,
+        )
+
+        continue
+      }
+
+      const workoutExerciseId = Crypto.randomUUID()
+
       await db.runAsync(
         `
           INSERT INTO workout_exercises (
@@ -267,13 +370,19 @@ export async function updateWorkout(
           )
           VALUES (?, ?, ?, ?, ?, ?, ?)
         `,
-        Crypto.randomUUID(),
+        workoutExerciseId,
         workoutId,
         exercise.exerciseId,
         exercise.sets,
         exercise.repMin,
         exercise.repMax,
         exercise.position,
+      )
+
+      await setWorkoutExerciseAlternativesWithinTransaction(
+        db,
+        workoutExerciseId,
+        exercise.alternativeExerciseIds,
       )
     }
 

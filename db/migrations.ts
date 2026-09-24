@@ -45,6 +45,11 @@ const migrations: Migration[] = [
   name: 'session_planned_sets',
   asset: require('./migrations/007_session_planned_sets.sql'),
 },
+  {
+    version: 8,
+    name: 'alternative_exercises',
+    asset: require('./migrations/008_alternative_exercises.sql'),
+  },
 ]
 
 async function runMigration(

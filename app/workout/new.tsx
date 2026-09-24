@@ -21,6 +21,9 @@ export default function NewWorkoutScreen() {
         name: draft.name,
         exercises: draft.exercises.map((exercise, index) => ({
           exerciseId: exercise.exerciseId,
+          alternativeExerciseIds: exercise.alternatives.map(
+            (alternative) => alternative.id,
+          ),
           sets: exercise.sets,
           repMin: exercise.repMin,
           repMax: exercise.repMax,

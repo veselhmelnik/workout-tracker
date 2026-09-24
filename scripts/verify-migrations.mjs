@@ -75,6 +75,26 @@ check(
   '007 must add planned_sets',
 )
 
+// 008 introduces the alternative-exercise slot identity: the new column must
+// exist and every pre-existing session row must be backfilled from exercise_id.
+const alternatives = readFileSync(
+  join(migrationsDir, '008_alternative_exercises.sql'),
+  'utf8',
+)
+
+check(
+  /CREATE TABLE IF NOT EXISTS workout_exercise_alternatives/.test(alternatives),
+  '008 must create workout_exercise_alternatives',
+)
+check(
+  /ADD COLUMN planned_exercise_id/.test(alternatives),
+  '008 must add session_exercises.planned_exercise_id',
+)
+check(
+  /SET\s+planned_exercise_id = exercise_id/.test(alternatives),
+  '008 must backfill planned_exercise_id from exercise_id',
+)
+
 // 4. The version bump has to live inside the migration transaction.
 const transactional =
   /withTransactionAsync\([\s\S]*?PRAGMA user_version = \$\{migration\.version\}/.test(registry)

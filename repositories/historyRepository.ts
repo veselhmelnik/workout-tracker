@@ -170,6 +170,134 @@ export function getExerciseHistory(
 }
 
 
+/** The most recent completed result of an exercise, without PR annotation. */
+export type LatestExerciseResult = {
+  performedAt: string
+  sets: ExerciseHistoryItem['sets']
+}
+
+/**
+ * Latest completed result for several exercises at once, keyed by exercise id.
+ * Two queries whatever the number of exercises, so a picker listing candidate
+ * exercises never runs one history query per row.
+ *
+ * Exercises with no completed, non-skipped, recorded occurrence are absent
+ * from the map rather than present with an empty result.
+ */
+export async function getLatestResultsForExercises(
+  exerciseIds: string[],
+): Promise<Map<string, LatestExerciseResult>> {
+  if (exerciseIds.length === 0) {
+    return new Map()
+  }
+
+  const db = await dbPromise
+
+  const placeholders = exerciseIds.map(() => '?').join(', ')
+
+  const occurrences = await db.getAllAsync<{
+    session_exercise_id: string
+    exercise_id: string
+    performed_at: string
+  }>(
+    `
+      SELECT
+        se.id AS session_exercise_id,
+        se.exercise_id,
+        ws.finished_at AS performed_at
+
+      FROM session_exercises se
+
+      JOIN workout_sessions ws
+        ON ws.id = se.workout_session_id
+
+      WHERE se.exercise_id IN (${placeholders})
+        AND se.is_skipped = 0
+        AND ws.finished_at IS NOT NULL
+        AND EXISTS (
+          SELECT 1
+          FROM set_records sr
+          WHERE sr.session_exercise_id = se.id
+            AND sr.reps IS NOT NULL
+        )
+
+      ORDER BY ws.finished_at DESC
+    `,
+    ...exerciseIds,
+  )
+
+  // Ordered newest first, so the first occurrence seen per exercise is its
+  // latest one.
+  const latestByExercise = new Map<
+    string,
+    { sessionExerciseId: string; performedAt: string }
+  >()
+
+  for (const occurrence of occurrences) {
+    if (latestByExercise.has(occurrence.exercise_id)) {
+      continue
+    }
+
+    latestByExercise.set(occurrence.exercise_id, {
+      sessionExerciseId: occurrence.session_exercise_id,
+      performedAt: occurrence.performed_at,
+    })
+  }
+
+  if (latestByExercise.size === 0) {
+    return new Map()
+  }
+
+  const occurrenceIds = [...latestByExercise.values()].map(
+    (entry) => entry.sessionExerciseId,
+  )
+
+  const setRows = await db.getAllAsync<{
+    session_exercise_id: string
+    set_number: number
+    weight: number | null
+    reps: number | null
+  }>(
+    `
+      SELECT
+        session_exercise_id,
+        set_number,
+        weight,
+        reps
+      FROM set_records
+      WHERE session_exercise_id IN (${occurrenceIds.map(() => '?').join(', ')})
+        AND reps IS NOT NULL
+      ORDER BY set_number ASC
+    `,
+    ...occurrenceIds,
+  )
+
+  const setsByOccurrence = new Map<string, ExerciseHistoryItem['sets']>()
+
+  for (const row of setRows) {
+    const sets = setsByOccurrence.get(row.session_exercise_id) ?? []
+
+    sets.push({
+      setNumber: row.set_number,
+      weight: row.weight,
+      reps: row.reps,
+    })
+
+    setsByOccurrence.set(row.session_exercise_id, sets)
+  }
+
+  const results = new Map<string, LatestExerciseResult>()
+
+  for (const [exerciseId, entry] of latestByExercise) {
+    results.set(exerciseId, {
+      performedAt: entry.performedAt,
+      sets: setsByOccurrence.get(entry.sessionExerciseId) ?? [],
+    })
+  }
+
+  return results
+}
+
 export async function getExerciseHistorySummary(
   exerciseId: string,
 ): Promise<ExerciseHistorySummary | null> {

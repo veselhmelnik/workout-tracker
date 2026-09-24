@@ -50,6 +50,9 @@ export default function EditWorkoutScreen() {
         name: draft.name,
         exercises: draft.exercises.map((exercise, index) => ({
           exerciseId: exercise.exerciseId,
+          alternativeExerciseIds: exercise.alternatives.map(
+            (alternative) => alternative.id,
+          ),
           sets: exercise.sets,
           repMin: exercise.repMin,
           repMax: exercise.repMax,
@@ -121,6 +124,7 @@ export default function EditWorkoutScreen() {
           sets: exercise.sets,
           repMin: exercise.repMin,
           repMax: exercise.repMax,
+          alternatives: exercise.alternatives,
         })),
       }}
       initialAddExercise={data.exerciseToAdd ?? undefined}

@@ -6,16 +6,25 @@ import {
   FinishSheet,
   type FinishSummary,
 } from '@/components/session/FinishSheet'
+import { ChangeExerciseSheet } from '@/components/session/ChangeExerciseSheet'
 import { RecentResultsSheet } from '@/components/session/RecentResultsSheet'
 import { SessionHeader } from '@/components/session/SessionHeader'
+import { ExercisePickerModal } from '@/components/workout/ExercisePickerModal'
 import { EmptyView, ErrorView, LoadingView } from '@/components/ui/StateViews'
 import { Button } from '@/components/ui/Button'
 import { colors, gutter, spacing } from '@/constants/theme'
 import { useSessionTimer } from '@/hooks/useSessionTimer'
 import {
+  getLatestResultsForExercises,
   getRecentExerciseHistory,
   type ExerciseHistoryItem,
+  type LatestExerciseResult,
 } from '@/repositories/historyRepository'
+import {
+  getSessionExerciseAlternatives,
+  replaceActiveSessionExercise,
+  restorePlannedSessionExercise,
+} from '@/repositories/sessionExerciseReplacementRepository'
 import {
   addSet,
   cancelWorkoutSession,
@@ -35,6 +44,7 @@ import {
   repsToInput,
   weightToInput,
 } from '@/utils/sessionFormat'
+import type { Exercise } from '@/types/entities'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
@@ -99,6 +109,16 @@ export default function ActiveSessionScreen() {
     null,
   )
   const [isRecentLoading, setIsRecentLoading] = useState(false)
+
+  // The slot whose Change Exercise flow is open, with its configured
+  // alternatives and their last results.
+  const [changeTarget, setChangeTarget] = useState<SessionExercise | null>(null)
+  const [alternatives, setAlternatives] = useState<Exercise[] | null>(null)
+  const [alternativePreviews, setAlternativePreviews] = useState<
+    Map<string, LatestExerciseResult>
+  >(() => new Map())
+  const [isBrowseOpen, setIsBrowseOpen] = useState(false)
+  const isChangingExerciseRef = useRef(false)
 
   const [isFinishSheetOpen, setIsFinishSheetOpen] = useState(false)
   const [isFinishing, setIsFinishing] = useState(false)
@@ -308,6 +328,180 @@ export default function ActiveSessionScreen() {
     }
   }, [])
 
+  /**
+   * Exercises this slot may not switch to: whatever any slot of this session
+   * is already performing — one exercise belongs to one slot — plus the
+   * planned exercise, which has its own Restore action.
+   */
+  const buildUnavailableIds = useCallback(
+    (exercise: SessionExercise) => {
+      const ids = new Set<string>()
+
+      for (const other of details?.exercises ?? []) {
+        ids.add(other.exerciseId)
+      }
+
+      if (exercise.plannedExerciseId) {
+        ids.add(exercise.plannedExerciseId)
+      }
+
+      return ids
+    },
+    [details],
+  )
+
+  const handleOpenChangeExercise = useCallback(
+    async (exercise: SessionExercise) => {
+      setChangeTarget(exercise)
+      setAlternatives(null)
+      setAlternativePreviews(new Map())
+
+      try {
+        const configured = await getSessionExerciseAlternatives(exercise.id)
+        const unavailable = buildUnavailableIds(exercise)
+
+        const selectable = configured.filter(
+          (alternative) => !unavailable.has(alternative.id),
+        )
+
+        setAlternatives(selectable)
+
+        // One batched call for every alternative, never one per row.
+        setAlternativePreviews(
+          await getLatestResultsForExercises(
+            selectable.map((alternative) => alternative.id),
+          ),
+        )
+      } catch (alternativesError) {
+        // Browse still works, so the sheet stays open with an empty list.
+        setAlternatives([])
+
+        Alert.alert(
+          'Could not load alternatives',
+          alternativesError instanceof Error
+            ? alternativesError.message
+            : String(alternativesError),
+        )
+      }
+    },
+    [buildUnavailableIds],
+  )
+
+  /** Counts reps the user has typed but not yet written back, too. */
+  const hasRecordedReps = useCallback((exercise: SessionExercise) => {
+    return exercise.sets.some((set) => {
+      const draft = draftsRef.current[set.id]
+
+      return draft ? parseRepsInput(draft.reps) !== null : set.reps !== null
+    })
+  }, [])
+
+  const runExerciseChange = useCallback(
+    (
+      exercise: SessionExercise,
+      action: () => Promise<void>,
+      errorTitle: string,
+    ) => {
+      // A second tap arriving before isBusy has re-rendered must not start a
+      // second replacement of the same slot.
+      if (isChangingExerciseRef.current) {
+        return
+      }
+
+      isChangingExerciseRef.current = true
+
+      const replacedSetIds = exercise.sets.map((set) => set.id)
+
+      // The flag clears on every path, including a refused mutation and a
+      // failed draft flush, so the action never locks itself out.
+      void runMutation(async () => {
+        await action()
+
+        // Those set rows no longer exist; drop pending edits so a later
+        // flush cannot try to write them back.
+        for (const setId of replacedSetIds) {
+          dirtyRef.current.delete(setId)
+        }
+      }, errorTitle).finally(() => {
+        isChangingExerciseRef.current = false
+      })
+    },
+    [runMutation],
+  )
+
+  const handleSelectReplacement = useCallback(
+    (exercise: SessionExercise, replacement: Exercise) => {
+      setChangeTarget(null)
+      setIsBrowseOpen(false)
+
+      const run = (discardRecordedSets: boolean) =>
+        runExerciseChange(
+          exercise,
+          () =>
+            replaceActiveSessionExercise(exercise.id, replacement.id, {
+              discardRecordedSets,
+            }),
+          'Could not change exercise',
+        )
+
+      if (!hasRecordedReps(exercise)) {
+        run(false)
+
+        return
+      }
+
+      Alert.alert(
+        'Change exercise?',
+        `You already recorded sets for ${exercise.name}. Changing the exercise will discard those sets.`,
+        [
+          { text: 'Keep Exercise', style: 'cancel' },
+          {
+            text: 'Change Exercise',
+            style: 'destructive',
+            // Only an explicit confirmation authorizes the discard; the
+            // repository refuses without it.
+            onPress: () => run(true),
+          },
+        ],
+      )
+    },
+    [hasRecordedReps, runExerciseChange],
+  )
+
+  const handleRestorePlanned = useCallback(
+    (exercise: SessionExercise) => {
+      const run = (discardRecordedSets: boolean) =>
+        runExerciseChange(
+          exercise,
+          () =>
+            restorePlannedSessionExercise(exercise.id, {
+              discardRecordedSets,
+            }),
+          'Could not restore exercise',
+        )
+
+      if (!hasRecordedReps(exercise)) {
+        run(false)
+
+        return
+      }
+
+      Alert.alert(
+        'Restore original exercise?',
+        `You already recorded sets for ${exercise.name}. Restoring ${exercise.plannedName} will discard those sets.`,
+        [
+          { text: 'Keep Exercise', style: 'cancel' },
+          {
+            text: 'Restore Exercise',
+            style: 'destructive',
+            onPress: () => run(true),
+          },
+        ],
+      )
+    },
+    [hasRecordedReps, runExerciseChange],
+  )
+
   const handleTogglePause = () => {
     if (!details) {
       return
@@ -469,6 +663,7 @@ export default function ActiveSessionScreen() {
                   )
                 }
                 onChangeDraft={handleChangeDraft}
+                onChangeExercise={() => handleOpenChangeExercise(item)}
                 onCommitDraft={(setId) =>
                   commitDraft(setId).catch(ignoreReportedFailure)
                 }
@@ -486,6 +681,7 @@ export default function ActiveSessionScreen() {
                     'Could not restore exercise',
                   )
                 }
+                onRestorePlanned={() => handleRestorePlanned(item)}
                 onShowRecent={() => handleShowRecent(item)}
                 onSkip={() =>
                   runMutation(
@@ -533,6 +729,35 @@ export default function ActiveSessionScreen() {
           </Pressable>
         </View>
       </KeyboardAvoidingView>
+
+      {changeTarget ? (
+        <ChangeExerciseSheet
+          alternatives={alternatives}
+          currentExerciseName={changeTarget.name}
+          isBusy={isBusy}
+          onBrowse={() => setIsBrowseOpen(true)}
+          onClose={() => setChangeTarget(null)}
+          onSelect={(exercise) =>
+            handleSelectReplacement(changeTarget, exercise)
+          }
+          previews={alternativePreviews}
+          visible={!isBrowseOpen}
+        />
+      ) : null}
+
+      {/* The one exercise library, reused rather than rebuilt for this flow. */}
+      {changeTarget ? (
+        <ExercisePickerModal
+          excludedExerciseIds={[...buildUnavailableIds(changeTarget)]}
+          onClose={() => setIsBrowseOpen(false)}
+          onSelect={(exercise) =>
+            handleSelectReplacement(changeTarget, exercise)
+          }
+          title="Change Exercise"
+          usedExerciseIds={[]}
+          visible={isBrowseOpen}
+        />
+      ) : null}
 
       <RecentResultsSheet
         exerciseName={recentExercise?.name ?? ''}

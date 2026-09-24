@@ -5,8 +5,19 @@ import * as Crypto from 'expo-crypto'
 export type WorkoutSessionDetails = WorkoutSession & {
     exercises: {
         id: string
+        /** The exercise actually being performed. */
         exerciseId: string
+        /**
+         * The exercise this slot planned. Equal to exerciseId until an
+         * exercise is replaced; null only for sessions predating migration 008.
+         */
+        plannedExerciseId: string | null
         name: string
+        /**
+         * Name of the planned exercise, for the "Alternative for ..." context.
+         * Null only when planned_exercise_id is.
+         */
+        plannedName: string | null
         type: 'WEIGHTED' | 'BODYWEIGHT'
         position: number
         isSkipped: boolean
@@ -99,16 +110,20 @@ export async function startWorkout(
                     id,
                     workout_session_id,
                     exercise_id,
+                    planned_exercise_id,
                     position,
                     is_skipped,
                     planned_sets,
                     rep_min,
                     rep_max
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `,
                 sessionExerciseId,
                 session.id,
+                workoutExercise.exercise_id,
+                // A new session performs what the slot planned; the two only
+                // diverge once an exercise is replaced during the workout.
                 workoutExercise.exercise_id,
                 workoutExercise.position,
                 0,
@@ -228,7 +243,9 @@ export async function getWorkoutSessionDetails(
     const exerciseRows = await db.getAllAsync<{
         session_exercise_id: string
         exercise_id: string
+        planned_exercise_id: string | null
         name: string
+        planned_name: string | null
         type: 'WEIGHTED' | 'BODYWEIGHT'
         position: number
         is_skipped: number
@@ -239,7 +256,9 @@ export async function getWorkoutSessionDetails(
       SELECT
         se.id AS session_exercise_id,
         se.exercise_id,
+        se.planned_exercise_id,
         e.name,
+        pe.name AS planned_name,
         e.type,
         se.position,
         se.is_skipped,
@@ -248,6 +267,12 @@ export async function getWorkoutSessionDetails(
       FROM session_exercises se
       JOIN exercises e
         ON e.id = se.exercise_id
+
+      -- The planned exercise may be archived, so this must not be an inner
+      -- join; it only supplies the name for a replaced slot.
+      LEFT JOIN exercises pe
+        ON pe.id = se.planned_exercise_id
+
       WHERE se.workout_session_id = ?
       ORDER BY se.position ASC
     `,
@@ -279,7 +304,9 @@ export async function getWorkoutSessionDetails(
         exercises.push({
             id: exerciseRow.session_exercise_id,
             exerciseId: exerciseRow.exercise_id,
+            plannedExerciseId: exerciseRow.planned_exercise_id,
             name: exerciseRow.name,
+            plannedName: exerciseRow.planned_name,
             type: exerciseRow.type,
             position: exerciseRow.position,
             isSkipped: exerciseRow.is_skipped === 1,

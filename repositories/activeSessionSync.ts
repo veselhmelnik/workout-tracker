@@ -12,7 +12,8 @@ export type TemplateExerciseSnapshot = {
 
 type SessionExerciseRow = {
   id: string
-  exercise_id: string
+  /** The slot this occurrence came from, even after a replacement. */
+  slot_exercise_id: string
   position: number
   set_count: number
   recorded_count: number
@@ -26,13 +27,16 @@ const POSITION_OFFSET = 10_000
 
 /**
  * Brings the unfinished session of a workout in line with the template that
- * was just saved. Exercises are matched by exercise id.
+ * was just saved. Occurrences are matched on slot identity — the planned
+ * exercise — not on what is actually being performed, so a replaced exercise
+ * keeps its slot instead of looking like "template exercise missing, unknown
+ * exercise added".
  *
  * - new in the template: snapshotted into the session with its sets prefilled
  * - dropped from the template: removed only when nothing was recorded, kept
  *   (after the template exercises) when it already holds reps
  * - present in both: position and planned sets/reps updated, recorded values
- *   never touched
+ *   and the performed exercise_id never touched
  *
  * Must run inside a transaction opened by the caller, so saving the template
  * and syncing the session commit or roll back together.
@@ -62,7 +66,12 @@ export async function syncActiveSessionWithinTransaction(
     `
       SELECT
         se.id,
-        se.exercise_id,
+
+        -- Slot identity, never the performed exercise: a replaced occurrence
+        -- must still match the template slot it belongs to. COALESCE covers
+        -- pre-008 rows that predate the backfill.
+        COALESCE(se.planned_exercise_id, se.exercise_id) AS slot_exercise_id,
+
         se.position,
 
         (
@@ -97,12 +106,12 @@ export async function syncActiveSessionWithinTransaction(
     session.id,
   )
 
-  const byExerciseId = new Map(
-    sessionExercises.map((row) => [row.exercise_id, row]),
+  const bySlotExerciseId = new Map(
+    sessionExercises.map((row) => [row.slot_exercise_id, row]),
   )
 
   for (const [index, template] of templateExercises.entries()) {
-    const existing = byExerciseId.get(template.exerciseId)
+    const existing = bySlotExerciseId.get(template.exerciseId)
 
     if (existing) {
       await db.runAsync(
@@ -155,16 +164,19 @@ export async function syncActiveSessionWithinTransaction(
           id,
           workout_session_id,
           exercise_id,
+          planned_exercise_id,
           position,
           is_skipped,
           planned_sets,
           rep_min,
           rep_max
         )
-        VALUES (?, ?, ?, ?, 0, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, 0, ?, ?, ?)
       `,
       sessionExerciseId,
       session.id,
+      template.exerciseId,
+      // A slot added mid-session starts unreplaced.
       template.exerciseId,
       index,
       template.sets,
@@ -186,7 +198,7 @@ export async function syncActiveSessionWithinTransaction(
   )
 
   const dropped = sessionExercises.filter(
-    (row) => !templateIds.has(row.exercise_id),
+    (row) => !templateIds.has(row.slot_exercise_id),
   )
 
   let retainedPosition = templateExercises.length
@@ -259,7 +271,7 @@ async function addMissingSets(
 }
 
 /** Same prefill rule startWorkout uses, reusable inside a transaction. */
-async function getPreviousSetWeightsWithinTransaction(
+export async function getPreviousSetWeightsWithinTransaction(
   db: Database,
   exerciseId: string,
 ): Promise<Map<number, number | null>> {

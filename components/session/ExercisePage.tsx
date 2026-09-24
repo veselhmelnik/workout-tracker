@@ -40,6 +40,8 @@ type ExercisePageProps = {
   onSkip: () => void
   onRestore: () => void
   onShowRecent: () => void
+  onChangeExercise: () => void
+  onRestorePlanned: () => void
   isBusy: boolean
 }
 
@@ -57,10 +59,18 @@ export function ExercisePage({
   onSkip,
   onRestore,
   onShowRecent,
+  onChangeExercise,
+  onRestorePlanned,
   isBusy,
 }: ExercisePageProps) {
   const isWeighted = exercise.type === 'WEIGHTED'
   const canRemoveSet = exercise.sets.length > 1
+
+  // Derived, never stored: the slot is performing something other than what
+  // the workout planned for it.
+  const isReplacement =
+    exercise.plannedExerciseId !== null &&
+    exercise.plannedExerciseId !== exercise.exerciseId
 
   const [focused, setFocused] = useState<FocusedField>(null)
 
@@ -91,6 +101,12 @@ export function ExercisePage({
             <Text style={styles.skippedBadge}>SKIPPED</Text>
           ) : null}
         </View>
+
+        {isReplacement && exercise.plannedName ? (
+          <Text style={styles.replacementContext}>
+            Alternative for {exercise.plannedName}
+          </Text>
+        ) : null}
 
         <Text style={styles.target}>
           {formatSetTarget(
@@ -272,6 +288,39 @@ export function ExercisePage({
             </View>
           </View>
         )}
+
+        {/* Secondary to the set inputs, + Set and Skip above it, but visible
+            rather than buried in an overflow menu. */}
+        <View style={styles.exerciseActions}>
+          <Pressable
+            accessibilityHint="Performs a different exercise in this slot for this workout only"
+            accessibilityRole="button"
+            disabled={isBusy}
+            onPress={onChangeExercise}
+            style={({ pressed }) => [
+              styles.exerciseAction,
+              pressed && styles.pressed,
+            ]}
+          >
+            <Text style={styles.exerciseActionLabel}>Change exercise</Text>
+          </Pressable>
+
+          {isReplacement && exercise.plannedName ? (
+            <Pressable
+              accessibilityRole="button"
+              disabled={isBusy}
+              onPress={onRestorePlanned}
+              style={({ pressed }) => [
+                styles.exerciseAction,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={styles.exerciseActionLabel}>
+                Restore {exercise.plannedName}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       </ScrollView>
     </View>
   )
@@ -317,6 +366,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingHorizontal: 6,
     paddingVertical: 3,
+  },
+
+  replacementContext: {
+    color: colors.textSecondary,
+    fontSize: fontSize.meta,
+    marginTop: 4,
   },
 
   target: {
@@ -488,6 +543,22 @@ const styles = StyleSheet.create({
 
   footerButton: {
     flex: 1,
+  },
+
+  exerciseActions: {
+    alignItems: 'flex-start',
+    marginTop: spacing.md,
+  },
+
+  exerciseAction: {
+    justifyContent: 'center',
+    minHeight: 40,
+  },
+
+  exerciseActionLabel: {
+    color: colors.textSecondary,
+    fontSize: 13.5,
+    fontWeight: '600',
   },
 
   pressed: {

@@ -34,6 +34,8 @@ export type DraftExercise = {
   sets: number
   repMin: number | null
   repMax: number | null
+  /** Configured slot alternatives, in order; persisted with the workout. */
+  alternatives: Exercise[]
 }
 
 export type WorkoutDraft = {
@@ -68,6 +70,8 @@ function serializeDraft(draft: WorkoutDraft): string {
       exercise.sets,
       exercise.repMin,
       exercise.repMax,
+      // Adding, removing or reordering alternatives is a persisted change.
+      exercise.alternatives.map((alternative) => alternative.id),
     ]),
   })
 }
@@ -235,8 +239,22 @@ export function WorkoutEditor({
           sets: exercises[target.index].sets,
           repMin: exercises[target.index].repMin,
           repMax: exercises[target.index].repMax,
+          alternatives: exercises[target.index].alternatives,
         }
-      : { sets: DEFAULT_SETS, repMin: null, repMax: null }
+      : { sets: DEFAULT_SETS, repMin: null, repMax: null, alternatives: [] }
+
+  // A slot cannot offer itself, nor any exercise planned in another slot:
+  // a replacement would otherwise record the same exercise twice in a session.
+  const targetExerciseId =
+    target?.kind === 'new'
+      ? target.exercise.id
+      : target?.kind === 'existing'
+        ? exercises[target.index].exerciseId
+        : null
+
+  const unavailableExerciseIds = exercises
+    .map((exercise) => exercise.exerciseId)
+    .concat(targetExerciseId ? [targetExerciseId] : [])
 
   const targetName =
     target?.kind === 'new'
@@ -390,6 +408,7 @@ export function WorkoutEditor({
         onClose={() => setTarget(null)}
         onRemove={target?.kind === 'existing' ? handleRemove : undefined}
         onSubmit={handleConfigSubmit}
+        unavailableExerciseIds={unavailableExerciseIds}
         visible={target !== null}
       />
     </SafeAreaView>

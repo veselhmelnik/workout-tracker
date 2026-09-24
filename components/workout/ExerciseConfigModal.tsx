@@ -1,23 +1,29 @@
 import { Button } from '@/components/ui/Button'
 import { Note, SectionLabel, Stepper, TextField } from '@/components/ui/Fields'
 import { ScreenHeader } from '@/components/ui/ScreenHeader'
-import { colors, fontSize, gutter, spacing } from '@/constants/theme'
+import { colors, fontSize, gutter, radius, spacing } from '@/constants/theme'
+import type { Exercise } from '@/types/entities'
+import { MAX_ALTERNATIVES } from '@/repositories/workoutExerciseAlternativesRepository'
 import { useEffect, useState } from 'react'
 import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
+import { ExercisePickerModal } from './ExercisePickerModal'
 
 export type ExerciseConfig = {
   sets: number
   repMin: number | null
   repMax: number | null
+  /** Slot alternatives, in configured order. */
+  alternatives: Exercise[]
 }
 
 type ExerciseConfigModalProps = {
@@ -25,6 +31,8 @@ type ExerciseConfigModalProps = {
   exerciseName: string
   mode: 'add' | 'edit'
   initialConfig: ExerciseConfig
+  /** Exercises this slot may not offer: itself and the workout's other slots. */
+  unavailableExerciseIds: string[]
   onSubmit: (config: ExerciseConfig) => void
   onRemove?: () => void
   onClose: () => void
@@ -49,6 +57,7 @@ export function ExerciseConfigModal({
   exerciseName,
   mode,
   initialConfig,
+  unavailableExerciseIds,
   onSubmit,
   onRemove,
   onClose,
@@ -56,12 +65,15 @@ export function ExerciseConfigModal({
   const [sets, setSets] = useState(initialConfig.sets)
   const [repMin, setRepMin] = useState(toRepValue(initialConfig.repMin))
   const [repMax, setRepMax] = useState(toRepValue(initialConfig.repMax))
+  const [alternatives, setAlternatives] = useState(initialConfig.alternatives)
+  const [isPickerOpen, setIsPickerOpen] = useState(false)
 
   useEffect(() => {
     if (visible) {
       setSets(initialConfig.sets)
       setRepMin(toRepValue(initialConfig.repMin))
       setRepMax(toRepValue(initialConfig.repMax))
+      setAlternatives(initialConfig.alternatives)
     }
   }, [visible, initialConfig])
 
@@ -78,8 +90,10 @@ export function ExerciseConfigModal({
       return
     }
 
-    onSubmit({ sets, repMin: parsedMin, repMax: parsedMax })
+    onSubmit({ sets, repMin: parsedMin, repMax: parsedMax, alternatives })
   }
+
+  const canAddAlternative = alternatives.length < MAX_ALTERNATIVES
 
   return (
     <Modal
@@ -137,6 +151,52 @@ export function ExerciseConfigModal({
               <Text style={styles.error}>{rangeError}</Text>
             ) : null}
 
+            {/* Secondary configuration: swaps available for this slot when
+                the planned equipment is busy. */}
+            <SectionLabel>Alternative exercises</SectionLabel>
+
+            {alternatives.map((alternative) => (
+              <View key={alternative.id} style={styles.alternativeRow}>
+                <Text numberOfLines={1} style={styles.alternativeName}>
+                  {alternative.name}
+                  {alternative.isArchived ? (
+                    <Text style={styles.archivedTag}> · archived</Text>
+                  ) : null}
+                </Text>
+
+                <Pressable
+                  accessibilityLabel={`Remove ${alternative.name}`}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  onPress={() =>
+                    setAlternatives((current) =>
+                      current.filter((entry) => entry.id !== alternative.id),
+                    )
+                  }
+                  style={({ pressed }) => pressed && styles.pressed}
+                >
+                  <Text style={styles.removeLabel}>Remove</Text>
+                </Pressable>
+              </View>
+            ))}
+
+            {canAddAlternative ? (
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => setIsPickerOpen(true)}
+                style={({ pressed }) => [
+                  styles.addAlternative,
+                  pressed && styles.pressed,
+                ]}
+              >
+                <Text style={styles.addAlternativeLabel}>+ Add alternative</Text>
+              </Pressable>
+            ) : (
+              <Text style={styles.alternativeHelper}>
+                Up to {MAX_ALTERNATIVES} alternatives. Remove one to swap it.
+              </Text>
+            )}
+
             <View style={styles.submit}>
               <Button
                 disabled={rangeError !== null}
@@ -156,6 +216,27 @@ export function ExerciseConfigModal({
             <Note>Rep range is a target only.</Note>
           </ScrollView>
         </KeyboardAvoidingView>
+
+        <ExercisePickerModal
+          // Its own slot, the workout's other slots and what is already
+          // configured here are all off limits.
+          excludedExerciseIds={[
+            ...unavailableExerciseIds,
+            ...alternatives.map((alternative) => alternative.id),
+          ]}
+          onClose={() => setIsPickerOpen(false)}
+          onSelect={(exercise) => {
+            setIsPickerOpen(false)
+            setAlternatives((current) =>
+              current.length < MAX_ALTERNATIVES
+                ? [...current, exercise]
+                : current,
+            )
+          }}
+          title="Add Alternative"
+          usedExerciseIds={[]}
+          visible={isPickerOpen}
+        />
       </SafeAreaView>
     </Modal>
   )
@@ -202,5 +283,59 @@ const styles = StyleSheet.create({
   submit: {
     marginBottom: spacing.md,
     marginTop: spacing.xxl,
+  },
+
+  alternativeRow: {
+    alignItems: 'center',
+    borderBottomColor: colors.divider,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: spacing.md,
+    justifyContent: 'space-between',
+    minHeight: 48,
+  },
+
+  alternativeName: {
+    color: colors.textPrimary,
+    flex: 1,
+    fontSize: 15,
+  },
+
+  archivedTag: {
+    color: colors.textMuted,
+    fontSize: 11.5,
+  },
+
+  removeLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+
+  addAlternative: {
+    alignItems: 'center',
+    borderColor: colors.borderStrong,
+    borderRadius: radius.md,
+    borderStyle: 'dashed',
+    borderWidth: 1,
+    justifyContent: 'center',
+    marginTop: spacing.sm,
+    minHeight: 44,
+  },
+
+  addAlternativeLabel: {
+    color: colors.textSecondary,
+    fontSize: 13.5,
+    fontWeight: '500',
+  },
+
+  alternativeHelper: {
+    color: colors.textMuted,
+    fontSize: 12,
+    marginTop: spacing.sm,
+  },
+
+  pressed: {
+    opacity: 0.6,
   },
 })

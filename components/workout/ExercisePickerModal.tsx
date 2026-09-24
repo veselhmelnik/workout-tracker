@@ -23,6 +23,9 @@ type ExercisePickerModalProps = {
   visible: boolean
   /** Exercises already in the workout — shown, but not selectable again. */
   usedExerciseIds: string[]
+  /** Exercises hidden entirely, e.g. ineligible as an alternative. */
+  excludedExerciseIds?: string[]
+  title?: string
   onSelect: (exercise: Exercise) => void
   onClose: () => void
 }
@@ -30,6 +33,8 @@ type ExercisePickerModalProps = {
 export function ExercisePickerModal({
   visible,
   usedExerciseIds,
+  excludedExerciseIds,
+  title = 'Add Exercise',
   onSelect,
   onClose,
 }: ExercisePickerModalProps) {
@@ -38,10 +43,17 @@ export function ExercisePickerModal({
 
   const { data, isLoading, error, reload } = useAsyncData(getExercises)
 
-  const groups = useMemo(
-    () => groupByPrimaryMuscleLabel(filterExercises(data ?? [], search)),
-    [data, search],
-  )
+  const groups = useMemo(() => {
+    // Excluded exercises are removed outright; getExercises already omits
+    // archived ones, so those can never be newly selected either.
+    const excluded = new Set(excludedExerciseIds ?? [])
+
+    const selectable = (data ?? []).filter(
+      (details) => !excluded.has(details.exercise.id),
+    )
+
+    return groupByPrimaryMuscleLabel(filterExercises(selectable, search))
+  }, [data, excludedExerciseIds, search])
 
   return (
     <Modal
@@ -51,7 +63,7 @@ export function ExercisePickerModal({
       visible={visible}
     >
       <SafeAreaView edges={['top', 'bottom']} style={styles.container}>
-        <ScreenHeader onBack={onClose} title="Add Exercise" />
+        <ScreenHeader onBack={onClose} title={title} />
 
         <View style={styles.searchRow}>
           <TextField
