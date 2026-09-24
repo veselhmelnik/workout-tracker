@@ -1,4 +1,8 @@
 import { dbPromise } from '@/db/database'
+import {
+  getPersonalRecordCountsBySession,
+  getPersonalRecordIds,
+} from './personalRecordRepository'
 import type {
   ExerciseType,
   Muscle,
@@ -15,6 +19,8 @@ export type WorkoutSessionHistoryItem = {
   performedExercises: number
   plannedExercises: number
   performedSets: number
+  /** Derived: exercise results in this session that set a personal record. */
+  prCount: number
 }
 
 export type WorkoutSessionHistoryExercise = {
@@ -24,6 +30,8 @@ export type WorkoutSessionHistoryExercise = {
   type: ExerciseType
   position: number
   isSkipped: boolean
+  /** Derived: this occurrence beat every earlier one of the same exercise. */
+  isPr: boolean
   plannedSets: number | null
   repMin: number | null
   repMax: number | null
@@ -124,6 +132,9 @@ export async function getWorkoutSessions(
     workoutId ?? null,
   )
 
+  // One batched pass over history, not a query per session or per exercise.
+  const prCounts = await getPersonalRecordCountsBySession()
+
   return rows.map((row) => ({
     id: row.id,
     workoutId: row.workout_id,
@@ -134,6 +145,7 @@ export async function getWorkoutSessions(
     plannedExercises: row.planned_exercises,
     performedExercises: row.performed_exercises,
     performedSets: row.performed_sets,
+    prCount: prCounts.get(row.id) ?? 0,
   }))
 }
 
@@ -240,6 +252,7 @@ export async function getWorkoutSessionHistoryDetails(
         type: row.exercise_type,
         position: row.position,
         isSkipped: row.is_skipped === 1,
+        isPr: false,
         plannedSets: row.planned_sets,
         repMin: row.rep_min,
         repMax: row.rep_max,
@@ -313,6 +326,14 @@ export async function getWorkoutSessionHistoryDetails(
     })
   }
 
+  const exercises = [...exerciseMap.values()]
+
+  // Batched for the exercises in this session only: their own PR history,
+  // computed against earlier occurrences, never against later workouts.
+  const personalRecordIds = await getPersonalRecordIds(
+    [...new Set(exercises.map((exercise) => exercise.exerciseId))],
+  )
+
   return {
     id: session.id,
     workoutId: session.workout_id,
@@ -320,7 +341,10 @@ export async function getWorkoutSessionHistoryDetails(
     startedAt: session.started_at,
     finishedAt: session.finished_at,
     totalPausedDuration: session.total_paused_duration,
-    exercises: [...exerciseMap.values()],
+    exercises: exercises.map((exercise) => ({
+      ...exercise,
+      isPr: personalRecordIds.has(exercise.sessionExerciseId),
+    })),
   }
 }
 

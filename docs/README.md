@@ -19,7 +19,7 @@ Replace these placeholders:
 2. In the repository: **Settings → Pages → Deploy from a branch**, branch
    `main`, folder `/docs`.
 3. The page becomes available at:
-   `https://veselhmelnik.github.io/<repo>/privacy.html`
+   `https://veselhmelnik.github.io/workout-tracker/privacy.html`
 
 ## After publishing
 

@@ -1,4 +1,5 @@
 import { DateBlock } from '@/components/ui/DateBlock'
+import { PersonalRecordBadge } from '@/components/ui/PersonalRecordBadge'
 import { colors, fonts } from '@/constants/theme'
 import { StyleSheet, Text, View } from 'react-native'
 
@@ -11,6 +12,8 @@ type ExerciseResultRowProps = {
   /** The newest result leads; older ones step down to secondary text. */
   isLatest: boolean
   isLast?: boolean
+  /** Derived: this result beat every earlier completed occurrence. */
+  isPr?: boolean
 }
 
 export function ExerciseResultRow({
@@ -19,6 +22,7 @@ export function ExerciseResultRow({
   context,
   isLatest,
   isLast = false,
+  isPr = false,
 }: ExerciseResultRowProps) {
   return (
     <View style={[styles.row, isLast && styles.rowLast]}>
@@ -33,6 +37,8 @@ export function ExerciseResultRow({
           </Text>
         ) : null}
       </View>
+
+      {isPr ? <PersonalRecordBadge /> : null}
     </View>
   )
 }
@@ -73,4 +79,5 @@ const styles = StyleSheet.create({
     color: colors.textMuted,
     fontSize: 11.5,
   },
+
 })

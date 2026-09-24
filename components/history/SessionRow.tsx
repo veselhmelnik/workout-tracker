@@ -47,6 +47,13 @@ export const SessionRow = memo(function SessionRow({
         </Text>
       </View>
 
+      {/* Summary of the exercise results inside, not a session-level award. */}
+      {session.prCount > 0 ? (
+        <Text style={styles.prCount}>
+          {session.prCount} {session.prCount === 1 ? 'PR' : 'PRs'}
+        </Text>
+      ) : null}
+
       <Text style={styles.chevron}>›</Text>
     </Pressable>
   )
@@ -109,6 +116,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.mono,
     fontSize: 12.5,
     fontVariant: ['tabular-nums'],
+  },
+
+  prCount: {
+    color: colors.success,
+    fontSize: 11.5,
+    fontWeight: '600',
   },
 
   chevron: {

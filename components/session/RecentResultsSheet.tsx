@@ -1,3 +1,4 @@
+import { PersonalRecordBadge } from '@/components/ui/PersonalRecordBadge'
 import { LoadingView } from '@/components/ui/StateViews'
 import { colors, fontSize, fonts, spacing } from '@/constants/theme'
 import type { ExerciseHistoryItem } from '@/repositories/historyRepository'
@@ -44,6 +45,8 @@ export function RecentResultsSheet({
             </Text>
             <Text style={styles.workout}>{item.workoutName}</Text>
           </View>
+
+          {item.isPr ? <PersonalRecordBadge /> : null}
         </View>
       ))}
     </BottomSheet>

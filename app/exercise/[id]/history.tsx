@@ -77,6 +77,7 @@ export default function ExerciseHistoryScreen() {
                   context={item.workoutName}
                   isLast={index === data.history.length - 1}
                   isLatest={index === 0}
+                  isPr={item.isPr}
                   performedAt={item.performedAt}
                   value={formatHistorySets(item, data.exercise.type)}
                 />

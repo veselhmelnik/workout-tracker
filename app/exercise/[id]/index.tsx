@@ -120,6 +120,7 @@ export default function ExerciseDetailsScreen() {
             {data.recent.map((item, index) => (
               <ExerciseResultRow
                 isLatest={index === 0}
+                isPr={item.isPr}
                 key={item.sessionExerciseId}
                 performedAt={item.performedAt}
                 value={formatHistorySets(item, exercise.type)}

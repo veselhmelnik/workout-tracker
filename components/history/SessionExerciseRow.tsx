@@ -1,3 +1,4 @@
+import { PersonalRecordBadge } from '@/components/ui/PersonalRecordBadge'
 import { colors, fonts } from '@/constants/theme'
 import type { WorkoutSessionHistoryExercise } from '@/repositories/workoutSessionHistoryRepository'
 import { UNSET_MUSCLE_LABEL } from '@/utils/exerciseGroups'
@@ -38,9 +39,13 @@ export function SessionExerciseRow({ exercise }: SessionExerciseRowProps) {
         </Text>
 
         {isPerformed ? (
-          <Text style={styles.result}>
-            {formatHistorySets(exercise, exercise.type)}
-          </Text>
+          <View style={styles.resultGroup}>
+            <Text style={styles.result}>
+              {formatHistorySets(exercise, exercise.type)}
+            </Text>
+
+            {exercise.isPr ? <PersonalRecordBadge /> : null}
+          </View>
         ) : (
           <Text style={styles.skippedTag}>SKIPPED</Text>
         )}
@@ -89,6 +94,14 @@ const styles = StyleSheet.create({
   nameSkipped: {
     textDecorationColor: colors.disabledText,
     textDecorationLine: 'line-through',
+  },
+
+  resultGroup: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    flexShrink: 1,
+    gap: 8,
+    marginLeft: 'auto',
   },
 
   // Long mixed-weight results wrap under the name rather than scrolling.

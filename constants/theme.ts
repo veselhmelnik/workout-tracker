@@ -38,7 +38,9 @@ export const colors = {
 
   destructive: '#E5645B',
   destructiveBorder: '#4A2C29',
+  /** Reserved for genuine achievement: the PR marker only. */
   success: '#4FB286',
+  successBorder: '#2A4739',
 
   disabledFill: '#22272E',
   disabledText: '#5A636D',

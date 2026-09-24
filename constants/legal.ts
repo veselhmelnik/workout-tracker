@@ -6,4 +6,4 @@
  * "setline") before release.
  */
 export const PRIVACY_POLICY_URL =
-  'https://veselhmelnik.github.io/setline/privacy.html'
+  'https://veselhmelnik.github.io/workout-tracker/privacy.html'

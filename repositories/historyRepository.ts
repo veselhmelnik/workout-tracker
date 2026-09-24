@@ -1,10 +1,14 @@
 import { dbPromise } from '@/db/database'
+import type { ExerciseType } from '@/types/entities'
+import { annotateWithPersonalRecords } from '@/utils/personalRecords'
 export type ExerciseHistoryItem = {
   sessionExerciseId: string
   workoutSessionId: string
   workoutId: string
   workoutName: string
   performedAt: string
+  /** True when this result beat every earlier completed occurrence. */
+  isPr: boolean
   sets: {
     setNumber: number
     weight: number | null
@@ -27,13 +31,20 @@ export type ExerciseHistorySummary = {
   }
   | null
 }
+/**
+ * Loads every completed, non-skipped occurrence of an exercise with its
+ * recorded sets, marks personal records across the whole history, then
+ * applies the caller's limit. PRs are therefore correct even for a recent
+ * slice: row 2 of 3 still shows PR if it beat all twenty earlier sessions.
+ *
+ * Sets for every occurrence come back in one query rather than one query per
+ * session, so annotating the full history costs two queries in total.
+ */
 async function getExerciseHistoryInternal(
   exerciseId: string,
   limit?: number,
 ): Promise<ExerciseHistoryItem[]> {
   const db = await dbPromise
-
-  const limitClause = limit !== undefined ? 'LIMIT ?' : ''
 
   const sessions = await db.getAllAsync<{
     session_exercise_id: string
@@ -41,6 +52,7 @@ async function getExerciseHistoryInternal(
     workout_id: string
     workout_name: string
     performed_at: string
+    exercise_type: ExerciseType
   }>(
     `
       SELECT
@@ -48,7 +60,8 @@ async function getExerciseHistoryInternal(
         ws.id AS workout_session_id,
         w.id AS workout_id,
         w.name AS workout_name,
-        ws.finished_at AS performed_at
+        ws.finished_at AS performed_at,
+        e.type AS exercise_type
       FROM session_exercises se
 
       JOIN workout_sessions ws
@@ -56,6 +69,9 @@ async function getExerciseHistoryInternal(
 
       JOIN workouts w
         ON w.id = ws.workout_id
+
+      JOIN exercises e
+        ON e.id = se.exercise_id
 
       WHERE se.exercise_id = ?
         AND se.is_skipped = 0
@@ -68,51 +84,76 @@ async function getExerciseHistoryInternal(
         )
 
       ORDER BY ws.finished_at DESC
-
-      ${limitClause}
     `,
-    ...(limit !== undefined
-      ? [exerciseId, limit]
-      : [exerciseId]),
+    exerciseId,
   )
 
-  const history: ExerciseHistoryItem[] = []
-
-  for (const session of sessions) {
-    const sets = await db.getAllAsync<{
-      set_number: number
-      weight: number | null
-      reps: number | null
-    }>(
-      `
-        SELECT
-          set_number,
-          weight,
-          reps
-        FROM set_records
-        WHERE session_exercise_id = ?
-          AND reps IS NOT NULL
-        ORDER BY set_number ASC
-      `,
-      session.session_exercise_id,
-    )
-
-    history.push({
-      sessionExerciseId: session.session_exercise_id,
-      workoutSessionId: session.workout_session_id,
-      workoutId: session.workout_id,
-      workoutName: session.workout_name,
-      performedAt: session.performed_at,
-
-      sets: sets.map((set) => ({
-        setNumber: set.set_number,
-        weight: set.weight,
-        reps: set.reps,
-      })),
-    })
+  if (sessions.length === 0) {
+    return []
   }
 
-  return history
+  const setRows = await db.getAllAsync<{
+    session_exercise_id: string
+    set_number: number
+    weight: number | null
+    reps: number | null
+  }>(
+    `
+      SELECT
+        sr.session_exercise_id,
+        sr.set_number,
+        sr.weight,
+        sr.reps
+      FROM set_records sr
+
+      JOIN session_exercises se
+        ON se.id = sr.session_exercise_id
+
+      JOIN workout_sessions ws
+        ON ws.id = se.workout_session_id
+
+      WHERE se.exercise_id = ?
+        AND se.is_skipped = 0
+        AND ws.finished_at IS NOT NULL
+        AND sr.reps IS NOT NULL
+
+      ORDER BY sr.set_number ASC
+    `,
+    exerciseId,
+  )
+
+  const setsByOccurrence = new Map<string, ExerciseHistoryItem['sets']>()
+
+  for (const row of setRows) {
+    const sets = setsByOccurrence.get(row.session_exercise_id) ?? []
+
+    sets.push({
+      setNumber: row.set_number,
+      weight: row.weight,
+      reps: row.reps,
+    })
+
+    setsByOccurrence.set(row.session_exercise_id, sets)
+  }
+
+  const history = sessions.map((session) => ({
+    sessionExerciseId: session.session_exercise_id,
+    workoutSessionId: session.workout_session_id,
+    workoutId: session.workout_id,
+    workoutName: session.workout_name,
+    performedAt: session.performed_at,
+    sets: setsByOccurrence.get(session.session_exercise_id) ?? [],
+    isPr: false,
+  }))
+
+  // Personal records are derived, never stored; computed over the full
+  // history before the limit is applied.
+  const annotated = annotateWithPersonalRecords(
+    history,
+    sessions[0].exercise_type,
+  )
+
+  return limit !== undefined ? annotated.slice(0, limit) : annotated
 }
 
 export function getRecentExerciseHistory(
