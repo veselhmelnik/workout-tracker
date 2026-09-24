@@ -9,7 +9,11 @@ import {
   getExerciseHistorySummary,
   type ExerciseHistorySummary,
 } from '@/repositories/historyRepository'
-import { formatHistorySets, formatWeight } from '@/utils/sessionFormat'
+import {
+  formatBestSetVolume,
+  formatHistorySets,
+  formatWeight,
+} from '@/utils/sessionFormat'
 import { useLocalSearchParams } from 'expo-router'
 import { useCallback } from 'react'
 import { FlatList, StyleSheet, Text, View } from 'react-native'
@@ -109,7 +113,7 @@ function SummaryBar({ summary }: { summary: ExerciseHistorySummary | null }) {
         <Text style={styles.summaryText}>
           Best set volume{' '}
           <Text style={styles.summaryValue}>
-            {formatWeight(bestSet.volume)} kg
+            {formatBestSetVolume(bestSet.volume)}
           </Text>{' '}
           · {formatWeight(bestSet.weight)}×{bestSet.reps}
         </Text>

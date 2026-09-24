@@ -1,22 +1,21 @@
 import { AddToWorkoutSheet } from '@/components/exercise/AddToWorkoutSheet'
 import { ExerciseResultRow } from '@/components/exercise/ExerciseResultRow'
-import { ProgressPreviewCard } from '@/components/exercise/ProgressPreviewCard'
+import { ProgressCard } from '@/components/exercise/ProgressCard'
 import { Button } from '@/components/ui/Button'
+import { YouTubeIcon } from '@/components/ui/YouTubeIcon'
 import { ScreenHeader } from '@/components/ui/ScreenHeader'
 import { ErrorView, LoadingView } from '@/components/ui/StateViews'
 import { colors, gutter, labelText, radius, spacing } from '@/constants/theme'
 import { useAsyncData } from '@/hooks/useAsyncData'
 import { getExerciseDetailsById } from '@/repositories/exerciseRepository'
-import {
-  getExerciseHistorySummary,
-  getRecentExerciseHistory,
-} from '@/repositories/historyRepository'
+import { getExerciseHistory } from '@/repositories/historyRepository'
 import type { ExerciseDetails } from '@/types/entities'
 import {
   buildTechniqueQuery,
   buildTechniqueSearchUrl,
 } from '@/utils/exerciseForm'
 import { UNSET_MUSCLE_LABEL } from '@/utils/exerciseGroups'
+import { buildProgressPoints } from '@/utils/exerciseProgress'
 import { formatHistorySets } from '@/utils/sessionFormat'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useCallback, useState, type ReactNode } from 'react'
@@ -39,17 +38,22 @@ export default function ExerciseDetailsScreen() {
   const [isAddSheetOpen, setIsAddSheetOpen] = useState(false)
 
   const load = useCallback(async () => {
-    const [details, recent, summary] = await Promise.all([
+    // One batched history load feeds both Recent Performance and the chart,
+    // rather than a second SQL path for progress points.
+    const [details, history] = await Promise.all([
       getExerciseDetailsById(id),
-      getRecentExerciseHistory(id, RECENT_LIMIT),
-      getExerciseHistorySummary(id),
+      getExerciseHistory(id),
     ])
 
     if (!details) {
       throw new Error('This exercise no longer exists.')
     }
 
-    return { details, recent, sessionCount: summary?.sessionCount ?? 0 }
+    return {
+      details,
+      recent: history.slice(0, RECENT_LIMIT),
+      progress: buildProgressPoints(history, details.exercise.type),
+    }
   }, [id])
 
   const { data, isLoading, error, reload } = useAsyncData(load, [id])
@@ -146,16 +150,18 @@ export default function ExerciseDetailsScreen() {
         )}
 
         <SectionHeading>Progress</SectionHeading>
-        <ProgressPreviewCard sessionCount={data.sessionCount} />
+        <ProgressCard points={data.progress} type={exercise.type} />
 
         <SectionHeading>Technique</SectionHeading>
         <Pressable
-          accessibilityHint="Opens a YouTube search in the browser"
+          accessibilityLabel={`Open YouTube search for ${techniqueQuery}`}
           accessibilityRole="link"
           disabled={!techniqueQuery}
           onPress={() => openTechniqueSearch(techniqueQuery)}
           style={({ pressed }) => [styles.technique, pressed && styles.pressed]}
         >
+          <YouTubeIcon />
+
           <View style={styles.techniqueText}>
             <Text style={styles.techniqueTitle}>YouTube</Text>
             <Text numberOfLines={1} style={styles.techniqueQuery}>

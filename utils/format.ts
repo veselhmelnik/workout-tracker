@@ -7,6 +7,14 @@ export function formatDayMonth(isoDate: string): string {
   })
 }
 
+/** Device-locale clock time, e.g. "10:30" or "6:20 PM". */
+export function formatTimeOfDay(isoDate: string): string {
+  return new Date(isoDate).toLocaleTimeString(undefined, {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
 /**
  * Stacked date for result rows: "18" over "SEP". Both parts come from the
  * device locale, so this yields "ВЕР." or "EYL" as well; never a fixed format.

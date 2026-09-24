@@ -61,6 +61,14 @@ export function formatWeight(weight: number): string {
   return String(Number(weight.toFixed(2)))
 }
 
+/**
+ * Best set volume is weight × reps of a single set, so its unit is kg·reps —
+ * not kilograms. Only this derived metric uses it; set results keep plain kg.
+ */
+export function formatBestSetVolume(volume: number): string {
+  return `${formatWeight(volume)} kg·reps`
+}
+
 /** Parses a weight input, keeping null for an empty field rather than 0. */
 export function parseWeightInput(value: string): number | null {
   const normalized = value.replace(',', '.').trim()
