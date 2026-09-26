@@ -9,10 +9,16 @@ const PREFERENCES_FILE = 'app-preferences.json'
 
 type AppPreferences = {
   onboardingCompleted: boolean
+  /**
+   * Development-only Pro override. Read only when __DEV__ is true, so a value
+   * left in the file cannot grant Pro in a production build.
+   */
+  developerProEnabled: boolean
 }
 
 const DEFAULT_PREFERENCES: AppPreferences = {
   onboardingCompleted: false,
+  developerProEnabled: false,
 }
 
 /** Cached after the first read so screens never hit the disk directly. */
@@ -80,5 +86,29 @@ export async function setOnboardingCompleted(): Promise<void> {
     })
   } catch (error) {
     console.warn('Could not save onboarding state', error)
+  }
+}
+
+/**
+ * The development Pro override. Always false outside a development build, so
+ * production entitlement cannot come from this file however it was edited.
+ */
+export async function getDeveloperProEnabled(): Promise<boolean> {
+  if (!__DEV__) {
+    return false
+  }
+
+  return (await readPreferences()).developerProEnabled
+}
+
+/** Resolves even when the write fails; the failure is logged, not thrown. */
+export async function setDeveloperProEnabled(enabled: boolean): Promise<void> {
+  try {
+    await writePreferences({
+      ...(await readPreferences()),
+      developerProEnabled: enabled,
+    })
+  } catch (error) {
+    console.warn('Could not save developer Pro state', error)
   }
 }

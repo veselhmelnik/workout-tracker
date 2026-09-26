@@ -1,3 +1,4 @@
+import { ExerciseIllustration } from '@/components/exercise/ExerciseIllustration'
 import { BottomSheet } from '@/components/ui/BottomSheet'
 import { LoadingView } from '@/components/ui/StateViews'
 import { colors, fontSize, fonts, radius, spacing } from '@/constants/theme'
@@ -61,6 +62,8 @@ export function ChangeExerciseSheet({
                   pressed && styles.pressed,
                 ]}
               >
+                <ExerciseIllustration sourceKey={alternative.sourceKey} />
+
                 <View style={styles.rowBody}>
                   <Text numberOfLines={1} style={styles.rowName}>
                     {alternative.name}
@@ -133,12 +136,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: spacing.md,
     minHeight: 52,
+    // Unchanged from before illustrations, so a row without art keeps exactly
+    // its old height; an illustrated row simply grows to fit the 54px tile.
     paddingVertical: 10,
   },
 
   rowBody: {
     flex: 1,
     gap: 2,
+    minWidth: 0,
   },
 
   rowName: {

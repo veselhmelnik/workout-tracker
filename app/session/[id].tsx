@@ -6,6 +6,8 @@ import {
   FinishSheet,
   type FinishSummary,
 } from '@/components/session/FinishSheet'
+import { useProFeature } from '@/components/pro/ProEntitlementProvider'
+import { ProUpsellSheet } from '@/components/pro/ProUpsellSheet'
 import { ChangeExerciseSheet } from '@/components/session/ChangeExerciseSheet'
 import { RecentResultsSheet } from '@/components/session/RecentResultsSheet'
 import { SessionHeader } from '@/components/session/SessionHeader'
@@ -118,7 +120,12 @@ export default function ActiveSessionScreen() {
     Map<string, LatestExerciseResult>
   >(() => new Map())
   const [isBrowseOpen, setIsBrowseOpen] = useState(false)
+  const [isUpsellOpen, setIsUpsellOpen] = useState(false)
   const isChangingExerciseRef = useRef(false)
+
+  // Gates starting a replacement only. Editing sets, finishing the workout and
+  // restoring the planned exercise are never gated.
+  const canReplaceExercise = useProFeature('alternative_exercises')
 
   const [isFinishSheetOpen, setIsFinishSheetOpen] = useState(false)
   const [isFinishing, setIsFinishing] = useState(false)
@@ -352,6 +359,14 @@ export default function ActiveSessionScreen() {
 
   const handleOpenChangeExercise = useCallback(
     async (exercise: SessionExercise) => {
+      if (!canReplaceExercise) {
+        // The selector never opens, so Browse exercises inside it is
+        // unreachable too; there is no second path to a replacement.
+        setIsUpsellOpen(true)
+
+        return
+      }
+
       setChangeTarget(exercise)
       setAlternatives(null)
       setAlternativePreviews(new Map())
@@ -384,7 +399,7 @@ export default function ActiveSessionScreen() {
         )
       }
     },
-    [buildUnavailableIds],
+    [buildUnavailableIds, canReplaceExercise],
   )
 
   /** Counts reps the user has typed but not yet written back, too. */
@@ -434,6 +449,14 @@ export default function ActiveSessionScreen() {
       setChangeTarget(null)
       setIsBrowseOpen(false)
 
+      // Checked again at the point of the write: entitlement could have
+      // changed while the selector was open.
+      if (!canReplaceExercise) {
+        setIsUpsellOpen(true)
+
+        return
+      }
+
       const run = (discardRecordedSets: boolean) =>
         runExerciseChange(
           exercise,
@@ -465,7 +488,7 @@ export default function ActiveSessionScreen() {
         ],
       )
     },
-    [hasRecordedReps, runExerciseChange],
+    [canReplaceExercise, hasRecordedReps, runExerciseChange],
   )
 
   const handleRestorePlanned = useCallback(
@@ -663,6 +686,7 @@ export default function ActiveSessionScreen() {
                   )
                 }
                 onChangeDraft={handleChangeDraft}
+                isChangeExerciseLocked={!canReplaceExercise}
                 onChangeExercise={() => handleOpenChangeExercise(item)}
                 onCommitDraft={(setId) =>
                   commitDraft(setId).catch(ignoreReportedFailure)
@@ -758,6 +782,11 @@ export default function ActiveSessionScreen() {
           visible={isBrowseOpen}
         />
       ) : null}
+
+      <ProUpsellSheet
+        feature={isUpsellOpen ? 'alternative_exercises' : null}
+        onClose={() => setIsUpsellOpen(false)}
+      />
 
       <RecentResultsSheet
         exerciseName={recentExercise?.name ?? ''}

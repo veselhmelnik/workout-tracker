@@ -1,5 +1,8 @@
+import { useProFeature } from '@/components/pro/ProEntitlementProvider'
+import { ProUpsellSheet } from '@/components/pro/ProUpsellSheet'
 import { Button } from '@/components/ui/Button'
 import { Note, SectionLabel, Stepper, TextField } from '@/components/ui/Fields'
+import { ProBadge } from '@/components/ui/ProBadge'
 import { ScreenHeader } from '@/components/ui/ScreenHeader'
 import { colors, fontSize, gutter, radius, spacing } from '@/constants/theme'
 import type { Exercise } from '@/types/entities'
@@ -67,6 +70,9 @@ export function ExerciseConfigModal({
   const [repMax, setRepMax] = useState(toRepValue(initialConfig.repMax))
   const [alternatives, setAlternatives] = useState(initialConfig.alternatives)
   const [isPickerOpen, setIsPickerOpen] = useState(false)
+  const [isUpsellOpen, setIsUpsellOpen] = useState(false)
+
+  const canConfigureAlternatives = useProFeature('alternative_exercises')
 
   useEffect(() => {
     if (visible) {
@@ -93,7 +99,8 @@ export function ExerciseConfigModal({
     onSubmit({ sets, repMin: parsedMin, repMax: parsedMax, alternatives })
   }
 
-  const canAddAlternative = alternatives.length < MAX_ALTERNATIVES
+  const canAddAlternative =
+    canConfigureAlternatives && alternatives.length < MAX_ALTERNATIVES
 
   return (
     <Modal
@@ -153,8 +160,14 @@ export function ExerciseConfigModal({
 
             {/* Secondary configuration: swaps available for this slot when
                 the planned equipment is busy. */}
-            <SectionLabel>Alternative exercises</SectionLabel>
+            <View style={styles.alternativeHeading}>
+              <SectionLabel>Alternative exercises</SectionLabel>
 
+              {!canConfigureAlternatives ? <ProBadge /> : null}
+            </View>
+
+            {/* Configured alternatives are shown whatever the tier: they are
+                stored data, and hiding them would make them look deleted. */}
             {alternatives.map((alternative) => (
               <View key={alternative.id} style={styles.alternativeRow}>
                 <Text numberOfLines={1} style={styles.alternativeName}>
@@ -164,23 +177,44 @@ export function ExerciseConfigModal({
                   ) : null}
                 </Text>
 
-                <Pressable
-                  accessibilityLabel={`Remove ${alternative.name}`}
-                  accessibilityRole="button"
-                  hitSlop={8}
-                  onPress={() =>
-                    setAlternatives((current) =>
-                      current.filter((entry) => entry.id !== alternative.id),
-                    )
-                  }
-                  style={({ pressed }) => pressed && styles.pressed}
-                >
-                  <Text style={styles.removeLabel}>Remove</Text>
-                </Pressable>
+                {canConfigureAlternatives ? (
+                  <Pressable
+                    accessibilityLabel={`Remove ${alternative.name}`}
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    onPress={() =>
+                      setAlternatives((current) =>
+                        current.filter((entry) => entry.id !== alternative.id),
+                      )
+                    }
+                    style={({ pressed }) => pressed && styles.pressed}
+                  >
+                    <Text style={styles.removeLabel}>Remove</Text>
+                  </Pressable>
+                ) : null}
               </View>
             ))}
 
-            {canAddAlternative ? (
+            {!canConfigureAlternatives ? (
+              // Read-only: no add or remove control is rendered, so the loaded
+              // configuration cannot be edited or cleared by accident, and it
+              // is submitted back exactly as it was loaded.
+              <Pressable
+                accessibilityHint="Explains what Setline Pro adds"
+                accessibilityLabel="Alternative exercises, Setline Pro feature"
+                accessibilityRole="button"
+                onPress={() => setIsUpsellOpen(true)}
+                style={({ pressed }) => pressed && styles.pressed}
+              >
+                <Text style={styles.alternativeHelper}>
+                  {alternatives.length > 0
+                    ? 'Editing alternatives requires Setline Pro.'
+                    : 'Swap an exercise mid-workout when equipment is busy.'}
+                </Text>
+
+                <Text style={styles.unlockLabel}>Unlock with Pro</Text>
+              </Pressable>
+            ) : canAddAlternative ? (
               <Pressable
                 accessibilityRole="button"
                 onPress={() => setIsPickerOpen(true)}
@@ -236,6 +270,11 @@ export function ExerciseConfigModal({
           title="Add Alternative"
           usedExerciseIds={[]}
           visible={isPickerOpen}
+        />
+
+        <ProUpsellSheet
+          feature={isUpsellOpen ? 'alternative_exercises' : null}
+          onClose={() => setIsUpsellOpen(false)}
         />
       </SafeAreaView>
     </Modal>
@@ -329,10 +368,23 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 
+  alternativeHeading: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
+  },
+
   alternativeHelper: {
     color: colors.textMuted,
     fontSize: 12,
     marginTop: spacing.sm,
+  },
+
+  unlockLabel: {
+    color: colors.textSecondary,
+    fontSize: 13,
+    fontWeight: '600',
+    marginTop: spacing.xs,
   },
 
   pressed: {

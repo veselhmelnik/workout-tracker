@@ -1,4 +1,5 @@
 import { Button } from '@/components/ui/Button'
+import { ProBadge } from '@/components/ui/ProBadge'
 import {
   colors,
   fontSize,
@@ -42,6 +43,8 @@ type ExercisePageProps = {
   onShowRecent: () => void
   onChangeExercise: () => void
   onRestorePlanned: () => void
+  /** Pro gate state; marks the action rather than hiding the capability. */
+  isChangeExerciseLocked: boolean
   isBusy: boolean
 }
 
@@ -61,6 +64,7 @@ export function ExercisePage({
   onShowRecent,
   onChangeExercise,
   onRestorePlanned,
+  isChangeExerciseLocked,
   isBusy,
 }: ExercisePageProps) {
   const isWeighted = exercise.type === 'WEIGHTED'
@@ -293,18 +297,34 @@ export function ExercisePage({
             rather than buried in an overflow menu. */}
         <View style={styles.exerciseActions}>
           <Pressable
-            accessibilityHint="Performs a different exercise in this slot for this workout only"
+            accessibilityHint={
+              isChangeExerciseLocked
+                ? 'Explains what Setline Pro adds'
+                : 'Performs a different exercise in this slot for this workout only'
+            }
+            accessibilityLabel={
+              isChangeExerciseLocked
+                ? 'Change exercise, Setline Pro feature'
+                : 'Change exercise'
+            }
             accessibilityRole="button"
             disabled={isBusy}
             onPress={onChangeExercise}
             style={({ pressed }) => [
               styles.exerciseAction,
+              styles.exerciseActionRow,
               pressed && styles.pressed,
             ]}
           >
             <Text style={styles.exerciseActionLabel}>Change exercise</Text>
+
+            {/* Kept visible when locked: the capability stays discoverable
+                instead of silently vanishing for free users. */}
+            {isChangeExerciseLocked ? <ProBadge /> : null}
           </Pressable>
 
+          {/* Never gated. A replacement started under Pro must always be
+              reversible, so entitlement can never trap a user in one. */}
           {isReplacement && exercise.plannedName ? (
             <Pressable
               accessibilityRole="button"
@@ -553,6 +573,12 @@ const styles = StyleSheet.create({
   exerciseAction: {
     justifyContent: 'center',
     minHeight: 40,
+  },
+
+  exerciseActionRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 7,
   },
 
   exerciseActionLabel: {

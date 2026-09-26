@@ -1,3 +1,4 @@
+import { ExerciseIllustration } from '@/components/exercise/ExerciseIllustration'
 import { Button } from '@/components/ui/Button'
 import { SectionLabel, TextField } from '@/components/ui/Fields'
 import { ScreenHeader } from '@/components/ui/ScreenHeader'
@@ -118,7 +119,10 @@ export function ExercisePickerModal({
                         pressed && styles.rowPressed,
                       ]}
                     >
+                      <ExerciseIllustration sourceKey={exercise.sourceKey} />
+
                       <Text
+                        numberOfLines={2}
                         style={[styles.rowLabel, isUsed && styles.rowLabelUsed]}
                       >
                         {exercise.name}
@@ -172,9 +176,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.divider,
     borderBottomWidth: 1,
     flexDirection: 'row',
+    // The whole row stays one press target; the thumbnail is inside it and
+    // takes no hit area of its own.
+    gap: 10,
     justifyContent: 'space-between',
     minHeight: 52,
-    paddingVertical: spacing.md,
+    paddingVertical: spacing.sm,
   },
 
   rowPressed: {

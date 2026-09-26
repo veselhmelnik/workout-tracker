@@ -31,6 +31,8 @@ yarn-error.*
 *.pem
 
 # local env files
+# .env holds the RevenueCat SDK key; only .env.example is committed.
+.env
 .env*.local
 
 # typescript

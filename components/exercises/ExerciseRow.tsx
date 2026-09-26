@@ -1,3 +1,4 @@
+import { ExerciseIllustration } from '@/components/exercise/ExerciseIllustration'
 import { colors, fonts, labelText } from '@/constants/theme'
 import type { ExerciseDetails } from '@/types/entities'
 import { formatExerciseMuscles } from '@/utils/exerciseGroups'
@@ -26,6 +27,8 @@ export const ExerciseRow = memo(function ExerciseRow({
       onPress={() => onPress(exercise.id)}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
+      <ExerciseIllustration sourceKey={exercise.sourceKey} />
+
       <View style={styles.body}>
         <Text numberOfLines={1} style={styles.name}>
           {exercise.name}

@@ -1,4 +1,5 @@
 import { AddToWorkoutSheet } from '@/components/exercise/AddToWorkoutSheet'
+import { ExerciseIllustration } from '@/components/exercise/ExerciseIllustration'
 import { ExerciseResultRow } from '@/components/exercise/ExerciseResultRow'
 import { ProgressCard } from '@/components/exercise/ProgressCard'
 import { Button } from '@/components/ui/Button'
@@ -108,8 +109,20 @@ export default function ExerciseDetailsScreen() {
   return (
     <Screen header={header}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.name}>{exercise.name}</Text>
-        <ExerciseMetaLine details={data.details} />
+        {/* Beside the title rather than a full-width hero, so Recent
+            performance stays near the top of the screen. Decorative and not
+            tappable, so it cannot read as a video thumbnail. */}
+        <View style={styles.titleBlock}>
+          <View style={styles.titleText}>
+            <Text style={styles.name}>{exercise.name}</Text>
+            <ExerciseMetaLine details={data.details} />
+          </View>
+
+          <ExerciseIllustration
+            sourceKey={exercise.sourceKey}
+            variant="details"
+          />
+        </View>
 
         {error ? (
           <Text style={styles.staleNotice}>
@@ -250,6 +263,19 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     paddingHorizontal: gutter,
     paddingTop: 18,
+  },
+
+  titleBlock: {
+    alignItems: 'flex-start',
+    flexDirection: 'row',
+    gap: spacing.lg,
+  },
+
+  // minWidth 0 lets a long name wrap instead of pushing the illustration off
+  // the right edge on a narrow screen.
+  titleText: {
+    flex: 1,
+    minWidth: 0,
   },
 
   name: {
