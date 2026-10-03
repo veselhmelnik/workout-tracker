@@ -91,6 +91,47 @@ export function initializeBilling(): Promise<BillingAvailability> {
   return configuration
 }
 
+/**
+ * Links purchases to a Setline account.
+ *
+ * Called after sign-in with Setline's own user UUID — never a Google subject
+ * or an email. RevenueCat handles the anonymous-to-identified transition
+ * itself, so a Pro purchase made before signing in carries over; the app does
+ * not try to migrate entitlements by hand.
+ *
+ * Returns the resulting entitlement so the caller can update state without
+ * waiting for the listener.
+ */
+export async function identifyBillingUser(
+  appUserId: string,
+): Promise<boolean | null> {
+  try {
+    const { customerInfo } = await Purchases.logIn(appUserId)
+
+    return hasProEntitlement(customerInfo)
+  } catch (error) {
+    logDeveloperError('logIn', error)
+
+    return null
+  }
+}
+
+/**
+ * Returns RevenueCat to an anonymous identity on sign-out. RevenueCat
+ * generates the new anonymous App User ID itself; nothing is fabricated here.
+ */
+export async function resetBillingUser(): Promise<boolean | null> {
+  try {
+    const customerInfo = await Purchases.logOut()
+
+    return hasProEntitlement(customerInfo)
+  } catch (error) {
+    logDeveloperError('logOut', error)
+
+    return null
+  }
+}
+
 /** True when the customer currently holds setline_pro. */
 export function hasProEntitlement(customerInfo: CustomerInfo): boolean {
   return customerInfo.entitlements.active[ENTITLEMENT_ID] !== undefined

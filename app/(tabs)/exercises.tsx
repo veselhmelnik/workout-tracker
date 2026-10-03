@@ -25,7 +25,7 @@ import {
   splitByMuscleRole,
 } from '@/utils/exerciseGroups'
 import { useLocalSearchParams, useRouter } from 'expo-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SectionList, StyleSheet, Text, View } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
@@ -39,6 +39,12 @@ type ExerciseSection = {
 }
 
 const SKELETON_ROWS = Array.from({ length: 9 }, (_, index) => index)
+
+/**
+ * scrollToLocation can race a sections change that has not laid out yet. The
+ * list is already at the top in that case, so there is nothing to recover.
+ */
+function noop() {}
 
 export default function ExercisesScreen() {
   const router = useRouter()
@@ -113,6 +119,48 @@ export default function ExercisesScreen() {
   const openExercise = useCallback(
     (exerciseId: string) => router.push(`/exercise/${exerciseId}`),
     [router],
+  )
+
+  const listRef = useRef<SectionList<ExerciseDetails, ExerciseSection>>(null)
+
+  // Switching segment used to remount the whole list (via key={source}) just
+  // to reset scroll position. That tore down every mounted row and image and
+  // forced initialNumToRender rows to decode their artwork again, which is
+  // what made Library feel slow to open. Scrolling the existing list costs
+  // nothing by comparison.
+  useEffect(() => {
+    if (sections.length === 0) {
+      return
+    }
+
+    listRef.current?.scrollToLocation({
+      sectionIndex: 0,
+      itemIndex: 0,
+      animated: false,
+      // Keeps the first section header visible rather than scrolling past it.
+      viewOffset: 0,
+    })
+  }, [sections.length, source])
+
+  // Stable identities, so VirtualizedList is not handed new functions on
+  // every keystroke and can keep its rendered cells.
+  const renderItem = useCallback(
+    ({ item }: { item: ExerciseDetails }) => (
+      <ExerciseRow details={item} onPress={openExercise} />
+    ),
+    [openExercise],
+  )
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: ExerciseSection }) => (
+      <ExerciseSectionHeader count={section.count} label={section.title} />
+    ),
+    [],
+  )
+
+  const keyExtractor = useCallback(
+    (details: ExerciseDetails) => details.exercise.id,
+    [],
   )
 
   // Single entry point to Create; "Create it" prefills the search text.
@@ -208,18 +256,17 @@ export default function ExercisesScreen() {
     return (
       <SectionList
         contentContainerStyle={styles.listContent}
-        initialNumToRender={14}
-        // Remount per source so switching tabs starts at the top.
-        key={source}
-        keyExtractor={(details) => details.exercise.id}
+        // Each row carries a 480×360 master decoded into a 72×54 tile, so the
+        // first screenful is the expensive part. 14 was tuned for a list with
+        // no artwork; 8 fills the viewport and lets the rest stream in.
+        initialNumToRender={8}
+        keyExtractor={keyExtractor}
         keyboardDismissMode="on-drag"
         keyboardShouldPersistTaps="handled"
-        renderItem={({ item }) => (
-          <ExerciseRow details={item} onPress={openExercise} />
-        )}
-        renderSectionHeader={({ section }) => (
-          <ExerciseSectionHeader count={section.count} label={section.title} />
-        )}
+        onScrollToIndexFailed={noop}
+        ref={listRef}
+        renderItem={renderItem}
+        renderSectionHeader={renderSectionHeader}
         sections={sections}
         stickySectionHeadersEnabled={false}
         style={styles.list}

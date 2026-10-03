@@ -1,0 +1,56 @@
+// Setline identity database.
+//
+// Entirely separate from the mobile SQLite database, which stays at migration
+// 8 and is untouched by accounts. Nothing here owns workout data: local
+// training data belongs to the device, and cloud storage is a later feature.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// The verified Google `sub` claim: stable for the lifetime of the Google
+  /// account. Email is deliberately NOT the identity key — a user can change
+  /// their Google email address and must still resolve to the same account.
+  googleSubject String @unique @map("google_subject")
+
+  /// Kept for display only. Not unique, not an identity.
+  email       String
+  displayName String? @map("display_name")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  sessions AuthSession[]
+
+  @@map("users")
+}
+
+model AuthSession {
+  id String @id @default(uuid()) @db.Uuid
+
+  userId String @map("user_id") @db.Uuid
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the refresh token, never the token itself. A database leak
+  /// therefore yields no usable credentials. Unique so a presented token maps
+  /// to at most one session.
+  refreshTokenHash String @unique @map("refresh_token_hash")
+
+  expiresAt DateTime  @map("expires_at")
+  /// Set on rotation and on logout; a revoked session is never accepted
+  /// again, which is what makes refresh-token reuse detectable.
+  revokedAt DateTime? @map("revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@map("auth_sessions")
+}

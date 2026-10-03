@@ -1,3 +1,4 @@
+import { useAuth } from '@/components/auth/AuthProvider'
 import {
   useProEntitlement,
   useProFeature,
@@ -103,6 +104,115 @@ function ProDataRow({ feature, onLockedPress, onOpen }: ProDataRowProps) {
   )
 }
 
+/**
+ * Account is independent of Pro: a signed-in user may be free, and a Pro user
+ * need not have an account. The two sections never read each other's state.
+ */
+function AccountSection() {
+  const { state, isAvailable, isBusy, signInWithGoogle, signOut } = useAuth()
+
+  const handleSignIn = async () => {
+    const outcome = await signInWithGoogle()
+
+    // Backing out of the Google sheet is ordinary; no alert for it.
+    if (outcome.status === 'failed') {
+      Alert.alert('Could not sign in', outcome.message)
+    }
+  }
+
+  const confirmSignOut = () => {
+    Alert.alert(
+      'Sign out?',
+      'Your workouts, exercises and history stay on this device. Signing out only disconnects your Setline account.',
+      [
+        { text: 'Stay Signed In', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: () => signOut() },
+      ],
+    )
+  }
+
+  if (state.status === 'loading') {
+    return (
+      <View style={styles.row}>
+        <View style={styles.rowText}>
+          <Text style={styles.rowDescription}>Checking your account…</Text>
+        </View>
+
+        <ActivityIndicator color={colors.textMuted} />
+      </View>
+    )
+  }
+
+  if (state.status === 'authenticated') {
+    return (
+      <>
+        <View style={styles.row}>
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>
+              {state.user.displayName ?? state.user.email}
+            </Text>
+            {state.user.displayName ? (
+              <Text style={styles.rowDescription}>{state.user.email}</Text>
+            ) : null}
+            <Text style={styles.rowStatus}>Signed in</Text>
+          </View>
+        </View>
+
+        <Pressable
+          accessibilityHint="Disconnects your Setline account from this device"
+          accessibilityLabel="Sign out"
+          accessibilityRole="button"
+          disabled={isBusy}
+          onPress={confirmSignOut}
+          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+        >
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Sign Out</Text>
+          </View>
+
+          {isBusy ? <ActivityIndicator color={colors.textMuted} /> : null}
+        </Pressable>
+      </>
+    )
+  }
+
+  return (
+    <>
+      <View style={styles.row}>
+        <View style={styles.rowText}>
+          <Text style={styles.rowTitle}>Not signed in</Text>
+          <Text style={styles.rowDescription}>
+            {isAvailable
+              ? 'Sign in to enable cloud backup in a future release.'
+              : 'Accounts are not available in this build.'}
+          </Text>
+        </View>
+      </View>
+
+      {isAvailable ? (
+        <Pressable
+          accessibilityHint="Signs in to Setline with your Google account"
+          accessibilityLabel="Continue with Google"
+          accessibilityRole="button"
+          disabled={isBusy}
+          onPress={handleSignIn}
+          style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+        >
+          <View style={styles.rowText}>
+            <Text style={styles.rowTitle}>Continue with Google</Text>
+          </View>
+
+          {isBusy ? (
+            <ActivityIndicator color={colors.textMuted} />
+          ) : (
+            <Text style={styles.chevron}>›</Text>
+          )}
+        </Pressable>
+      ) : null}
+    </>
+  )
+}
+
 export default function SettingsScreen() {
   const router = useRouter()
 
@@ -150,6 +260,10 @@ export default function SettingsScreen() {
       <ScreenHeader title="Settings" />
 
       <ScrollView contentContainerStyle={styles.content}>
+        <Text style={styles.sectionLabel}>Account</Text>
+
+        <AccountSection />
+
         <Text style={styles.sectionLabel}>Subscription</Text>
 
         <View style={styles.row}>

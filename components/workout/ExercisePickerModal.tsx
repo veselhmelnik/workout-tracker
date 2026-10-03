@@ -16,8 +16,15 @@ import {
   groupByPrimaryMuscleLabel,
 } from '@/utils/exerciseGroups'
 import { useRouter } from 'expo-router'
-import { useMemo, useState } from 'react'
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { memo, useCallback, useMemo, useState } from 'react'
+import {
+  Modal,
+  Pressable,
+  SectionList,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
 type ExercisePickerModalProps = {
@@ -33,6 +40,47 @@ type ExercisePickerModalProps = {
 
 /** Same split, labels and values as the Exercises tab. */
 type Source = 'LIBRARY' | 'CUSTOM'
+
+type PickerSection = {
+  muscleLabel: string
+  data: Exercise[]
+}
+
+/**
+ * Memoized so scrolling only renders rows entering the window, rather than
+ * every mounted row whenever the modal's search or segment state changes.
+ */
+const PickerRow = memo(function PickerRow({
+  exercise,
+  isUsed,
+  onSelect,
+}: {
+  exercise: Exercise
+  isUsed: boolean
+  onSelect: (exercise: Exercise) => void
+}) {
+  return (
+    <Pressable
+      accessibilityHint={isUsed ? 'Already in this workout' : undefined}
+      accessibilityRole="button"
+      accessibilityState={{ disabled: isUsed }}
+      disabled={isUsed}
+      onPress={() => onSelect(exercise)}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
+      <ExerciseIllustration sourceKey={exercise.sourceKey} />
+
+      <Text
+        numberOfLines={2}
+        style={[styles.rowLabel, isUsed && styles.rowLabelUsed]}
+      >
+        {exercise.name}
+      </Text>
+
+      <Text style={styles.rowTrailing}>{isUsed ? 'Added' : '›'}</Text>
+    </Pressable>
+  )
+})
 
 export function ExercisePickerModal({
   visible,
@@ -76,10 +124,41 @@ export function ExercisePickerModal({
   )
 
   // Search runs inside the selected segment only, matching the Exercises tab.
-  const groups = useMemo(
-    () => groupByPrimaryMuscleLabel(filterExercises(sourceExercises, search)),
+  const sections = useMemo<PickerSection[]>(
+    () =>
+      groupByPrimaryMuscleLabel(
+        filterExercises(sourceExercises, search),
+      ).map((group) => ({
+        muscleLabel: group.muscleLabel,
+        data: group.exercises,
+      })),
     [search, sourceExercises],
   )
+
+  const usedIds = useMemo(
+    () => new Set(usedExerciseIds),
+    [usedExerciseIds],
+  )
+
+  const renderItem = useCallback(
+    ({ item }: { item: Exercise }) => (
+      <PickerRow
+        exercise={item}
+        isUsed={usedIds.has(item.id)}
+        onSelect={onSelect}
+      />
+    ),
+    [onSelect, usedIds],
+  )
+
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: PickerSection }) => (
+      <SectionLabel>{section.muscleLabel}</SectionLabel>
+    ),
+    [],
+  )
+
+  const keyExtractor = useCallback((exercise: Exercise) => exercise.id, [])
 
   // Tells "this segment is empty" apart from "nothing matches the search".
   const isSourceEmpty = data !== null && sourceExercises.length === 0
@@ -131,65 +210,32 @@ export function ExercisePickerModal({
         {error ? <ErrorView error={error} onRetry={reload} /> : null}
 
         {data && !error ? (
-          <ScrollView
+          // Virtualized: a ScrollView here mounted all 87 built-in rows and
+          // their artwork at once every time the picker opened.
+          <SectionList
             contentContainerStyle={styles.content}
+            initialNumToRender={8}
+            keyExtractor={keyExtractor}
             keyboardShouldPersistTaps="handled"
-          >
-            {groups.length === 0 ? (
-              <EmptyView message={emptyMessage} />
-            ) : null}
-
-            {groups.map((group) => (
-              <View key={group.muscleLabel}>
-                <SectionLabel>{group.muscleLabel}</SectionLabel>
-
-                {group.exercises.map((exercise) => {
-                  const isUsed = usedExerciseIds.includes(exercise.id)
-
-                  return (
-                    <Pressable
-                      accessibilityHint={
-                        isUsed ? 'Already in this workout' : undefined
-                      }
-                      accessibilityRole="button"
-                      accessibilityState={{ disabled: isUsed }}
-                      disabled={isUsed}
-                      key={exercise.id}
-                      onPress={() => onSelect(exercise)}
-                      style={({ pressed }) => [
-                        styles.row,
-                        pressed && styles.rowPressed,
-                      ]}
-                    >
-                      <ExerciseIllustration sourceKey={exercise.sourceKey} />
-
-                      <Text
-                        numberOfLines={2}
-                        style={[styles.rowLabel, isUsed && styles.rowLabelUsed]}
-                      >
-                        {exercise.name}
-                      </Text>
-
-                      <Text style={styles.rowTrailing}>
-                        {isUsed ? 'Added' : '›'}
-                      </Text>
-                    </Pressable>
-                  )
-                })}
+            ListEmptyComponent={<EmptyView message={emptyMessage} />}
+            ListFooterComponent={
+              <View style={styles.footer}>
+                <Button
+                  label="+ New Exercise"
+                  onPress={() => {
+                    onClose()
+                    router.push('/exercise/new')
+                  }}
+                  variant="secondary"
+                />
               </View>
-            ))}
-
-            <View style={styles.footer}>
-              <Button
-                label="+ New Exercise"
-                onPress={() => {
-                  onClose()
-                  router.push('/exercise/new')
-                }}
-                variant="secondary"
-              />
-            </View>
-          </ScrollView>
+            }
+            renderItem={renderItem}
+            renderSectionHeader={renderSectionHeader}
+            sections={sections}
+            stickySectionHeadersEnabled={false}
+            style={styles.list}
+          />
         ) : null}
       </SafeAreaView>
     </Modal>
@@ -211,6 +257,10 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xs,
     paddingHorizontal: gutter,
     paddingTop: spacing.md,
+  },
+
+  list: {
+    flex: 1,
   },
 
   content: {

@@ -3,6 +3,7 @@ import { ErrorView, LoadingView } from '@/components/ui/StateViews'
 import { colors } from '@/constants/theme'
 import { migrateDb } from '@/db/migrations'
 import { seedBuiltInExercises, seedMuscles } from '@/db/seeds'
+import { AuthProvider } from '@/components/auth/AuthProvider'
 import { ProEntitlementProvider } from '@/components/pro/ProEntitlementProvider'
 import {
   getDeveloperProEnabled,
@@ -124,30 +125,35 @@ export default function RootLayout() {
       ) : (
         // Mounted only once startup has resolved, so its initial value is the
         // final one; onboarding has no Pro surfaces and sits outside it.
-        <ProEntitlementProvider
-          initialDeveloperProEnabled={isDeveloperProEnabled}
-        >
-          <ThemeProvider value={navigationTheme}>
-            <Stack
-              screenOptions={{
-                contentStyle: { backgroundColor: colors.background },
-                headerShown: false,
-              }}
-            >
-              <Stack.Screen name="(tabs)" />
-              <Stack.Screen name="workout/new" />
-              <Stack.Screen name="workout/[id]" />
-              <Stack.Screen name="exercise/new" />
-              <Stack.Screen name="exercise/[id]/index" />
-              <Stack.Screen name="exercise/[id]/edit" />
-              <Stack.Screen name="exercise/[id]/history" />
-              <Stack.Screen name="session/[id]" />
-              <Stack.Screen name="history/[id]" />
-              <Stack.Screen name="settings" />
-              <Stack.Screen name="export" />
-            </Stack>
-          </ThemeProvider>
-        </ProEntitlementProvider>
+        /* Auth wraps billing: signing in tells the billing adapter which
+           account owns the purchases. Neither blocks startup — both resolve
+           in the background while the tracker is already usable. */
+        <AuthProvider>
+          <ProEntitlementProvider
+            initialDeveloperProEnabled={isDeveloperProEnabled}
+          >
+            <ThemeProvider value={navigationTheme}>
+              <Stack
+                screenOptions={{
+                  contentStyle: { backgroundColor: colors.background },
+                  headerShown: false,
+                }}
+              >
+                <Stack.Screen name="(tabs)" />
+                <Stack.Screen name="workout/new" />
+                <Stack.Screen name="workout/[id]" />
+                <Stack.Screen name="exercise/new" />
+                <Stack.Screen name="exercise/[id]/index" />
+                <Stack.Screen name="exercise/[id]/edit" />
+                <Stack.Screen name="exercise/[id]/history" />
+                <Stack.Screen name="session/[id]" />
+                <Stack.Screen name="history/[id]" />
+                <Stack.Screen name="settings" />
+                <Stack.Screen name="export" />
+              </Stack>
+            </ThemeProvider>
+          </ProEntitlementProvider>
+        </AuthProvider>
       )}
     </SafeAreaProvider>
   )

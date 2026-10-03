@@ -1,5 +1,6 @@
 import { getExerciseIllustration } from '@/constants/exerciseIllustrations'
 import { colors } from '@/constants/theme'
+import { memo } from 'react'
 import { Image, StyleSheet, View } from 'react-native'
 
 /**
@@ -34,7 +35,7 @@ type ExerciseIllustrationProps = {
  * in text, and the art adds nothing a screen reader needs, so it is hidden
  * from accessibility rather than repeating the name.
  */
-export function ExerciseIllustration({
+export const ExerciseIllustration = memo(function ExerciseIllustration({
   sourceKey,
   variant = 'thumbnail',
 }: ExerciseIllustrationProps) {
@@ -69,7 +70,7 @@ export function ExerciseIllustration({
       />
     </View>
   )
-}
+})
 
 const styles = StyleSheet.create({
   tile: {
