@@ -144,6 +144,7 @@ export default function RootLayout() {
               <Stack.Screen name="session/[id]" />
               <Stack.Screen name="history/[id]" />
               <Stack.Screen name="settings" />
+              <Stack.Screen name="export" />
             </Stack>
           </ThemeProvider>
         </ProEntitlementProvider>

@@ -33,7 +33,7 @@ const PRO_GATED: Record<ProFeature, boolean> = {
 const IMPLEMENTED: Record<ProFeature, boolean> = {
   alternative_exercises: true,
   advanced_progress: false,
-  export: false,
+  export: true,
   backup_sync: false,
 }
 
@@ -56,7 +56,8 @@ export const PRO_FEATURE_COPY: Record<
 
   export: {
     title: 'Export Data',
-    description: 'Take your training history out of the app as a file.',
+    description:
+      'Take your full training history out of the app as a CSV package or a structured JSON file, created on your device.',
   },
 
   backup_sync: {

@@ -14,6 +14,7 @@ import {
 import { colors, gutter, labelText, spacing } from '@/constants/theme'
 import { restorePurchases } from '@/services/billing/revenueCat'
 import Constants from 'expo-constants'
+import { useRouter } from 'expo-router'
 import * as WebBrowser from 'expo-web-browser'
 import { useState } from 'react'
 import {
@@ -46,15 +47,18 @@ async function openPrivacyPolicy() {
 type ProDataRowProps = {
   feature: ProFeature
   onLockedPress: (feature: ProFeature) => void
+  /** Where an entitled user goes; omitted while the feature is unbuilt. */
+  onOpen?: () => void
 }
 
 /**
- * Entitlement and availability are separate concerns: holding Pro does not
- * build an unfinished feature, so the status line reads "Coming soon" either
- * way. Only the lock state differs — an entitled user gets an inert row
- * rather than a Pro badge that would misrepresent why it does nothing.
+ * Entitlement and availability are separate concerns, and the row reflects
+ * both. Without Pro it is locked and opens the upsell. With Pro it either
+ * opens the feature, or — if the feature is not built yet — sits inert with
+ * "Coming soon" rather than a Pro badge that would misstate why it does
+ * nothing.
  */
-function ProDataRow({ feature, onLockedPress }: ProDataRowProps) {
+function ProDataRow({ feature, onLockedPress, onOpen }: ProDataRowProps) {
   const hasAccess = useProFeature(feature)
   const copy = PRO_FEATURE_COPY[feature]
 
@@ -72,18 +76,24 @@ function ProDataRow({ feature, onLockedPress }: ProDataRowProps) {
     </View>
   )
 
-  if (hasAccess) {
+  if (hasAccess && !onOpen) {
     return <View style={styles.row}>{body}</View>
   }
 
+  const isLocked = !hasAccess
+
   return (
     <Pressable
-      accessibilityHint="Explains what Setline Pro adds"
-      accessibilityLabel={`${copy.title}, Setline Pro feature${
-        status ? `. ${status}` : ''
-      }`}
+      accessibilityHint={
+        isLocked ? 'Explains what Setline Pro adds' : undefined
+      }
+      accessibilityLabel={
+        isLocked
+          ? `${copy.title}, Setline Pro feature${status ? `. ${status}` : ''}`
+          : copy.title
+      }
       accessibilityRole="button"
-      onPress={() => onLockedPress(feature)}
+      onPress={() => (isLocked ? onLockedPress(feature) : onOpen?.())}
       style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
       {body}
@@ -94,6 +104,8 @@ function ProDataRow({ feature, onLockedPress }: ProDataRowProps) {
 }
 
 export default function SettingsScreen() {
+  const router = useRouter()
+
   const [upsellFeature, setUpsellFeature] = useState<ProFeature | null>(null)
 
   const { isPro, isBillingAvailable, developerProEnabled, setDeveloperPro } =
@@ -201,6 +213,10 @@ export default function SettingsScreen() {
             feature={feature}
             key={feature}
             onLockedPress={setUpsellFeature}
+            // Export is built; Backup & Sync is not, so it stays inert.
+            onOpen={
+              feature === 'export' ? () => router.push('/export') : undefined
+            }
           />
         ))}
 

@@ -1,6 +1,6 @@
 import { ExerciseIllustration } from '@/components/exercise/ExerciseIllustration'
 import { Button } from '@/components/ui/Button'
-import { SectionLabel, TextField } from '@/components/ui/Fields'
+import { SectionLabel, Segmented, TextField } from '@/components/ui/Fields'
 import { ScreenHeader } from '@/components/ui/ScreenHeader'
 import {
   EmptyView,
@@ -31,6 +31,9 @@ type ExercisePickerModalProps = {
   onClose: () => void
 }
 
+/** Same split, labels and values as the Exercises tab. */
+type Source = 'LIBRARY' | 'CUSTOM'
+
 export function ExercisePickerModal({
   visible,
   usedExerciseIds,
@@ -41,20 +44,51 @@ export function ExercisePickerModal({
 }: ExercisePickerModalProps) {
   const router = useRouter()
   const [search, setSearch] = useState('')
+  const [source, setSource] = useState<Source>('LIBRARY')
 
   const { data, isLoading, error, reload } = useAsyncData(getExercises)
 
-  const groups = useMemo(() => {
-    // Excluded exercises are removed outright; getExercises already omits
-    // archived ones, so those can never be newly selected either.
+  /**
+   * Order matters. The caller's exclusions are business rules — a replacement
+   * cannot reuse an exercise already performed in the session, an alternative
+   * cannot be the slot's own exercise — so they are applied first and the
+   * Library/My Exercises split only partitions what is already eligible.
+   * Switching segment can therefore never surface an ineligible exercise.
+   */
+  const selectable = useMemo(() => {
+    // getExercises already omits archived ones, so those can never be newly
+    // selected either.
     const excluded = new Set(excludedExerciseIds ?? [])
 
-    const selectable = (data ?? []).filter(
+    return (data ?? []).filter(
       (details) => !excluded.has(details.exercise.id),
     )
+  }, [data, excludedExerciseIds])
 
-    return groupByPrimaryMuscleLabel(filterExercises(selectable, search))
-  }, [data, excludedExerciseIds, search])
+  const sourceExercises = useMemo(
+    () =>
+      selectable.filter((details) =>
+        source === 'LIBRARY'
+          ? details.exercise.isBuiltIn
+          : !details.exercise.isBuiltIn,
+      ),
+    [selectable, source],
+  )
+
+  // Search runs inside the selected segment only, matching the Exercises tab.
+  const groups = useMemo(
+    () => groupByPrimaryMuscleLabel(filterExercises(sourceExercises, search)),
+    [search, sourceExercises],
+  )
+
+  // Tells "this segment is empty" apart from "nothing matches the search".
+  const isSourceEmpty = data !== null && sourceExercises.length === 0
+
+  const emptyMessage = isSourceEmpty
+    ? source === 'CUSTOM'
+      ? 'No custom exercises yet. Create one with + New Exercise.'
+      : 'No exercises found.'
+    : 'No exercises found.'
 
   return (
     <Modal
@@ -65,6 +99,20 @@ export function ExercisePickerModal({
     >
       <SafeAreaView edges={['top', 'bottom']} style={styles.container}>
         <ScreenHeader onBack={onClose} title={title} />
+
+        {/* Same control, labels and values as the Exercises tab, so the two
+            places never diverge. Search text is kept across a switch, as it
+            is there. */}
+        <View style={styles.sourceTabs}>
+          <Segmented
+            onChange={setSource}
+            options={[
+              { value: 'LIBRARY', label: 'Library' },
+              { value: 'CUSTOM', label: 'My Exercises' },
+            ]}
+            value={source}
+          />
+        </View>
 
         <View style={styles.searchRow}>
           <TextField
@@ -88,13 +136,7 @@ export function ExercisePickerModal({
             keyboardShouldPersistTaps="handled"
           >
             {groups.length === 0 ? (
-              <EmptyView
-                message={
-                  search
-                    ? 'No exercises match that search.'
-                    : 'No exercises yet. Create one from the Exercises tab.'
-                }
-              />
+              <EmptyView message={emptyMessage} />
             ) : null}
 
             {groups.map((group) => (
@@ -158,6 +200,11 @@ const styles = StyleSheet.create({
   container: {
     backgroundColor: colors.background,
     flex: 1,
+  },
+
+  sourceTabs: {
+    paddingHorizontal: gutter,
+    paddingTop: spacing.md,
   },
 
   searchRow: {
