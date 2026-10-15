@@ -125,13 +125,16 @@ export default function RootLayout() {
       ) : (
         // Mounted only once startup has resolved, so its initial value is the
         // final one; onboarding has no Pro surfaces and sits outside it.
-        /* Auth wraps billing: signing in tells the billing adapter which
-           account owns the purchases. Neither blocks startup — both resolve
-           in the background while the tracker is already usable. */
-        <AuthProvider>
-          <ProEntitlementProvider
-            initialDeveloperProEnabled={isDeveloperProEnabled}
-          >
+        /* Billing wraps auth: signing in resolves a final entitlement — after
+           any syncPurchases fallback — and pushes it down, so the Pro state
+           can never be left stale on an intermediate value. The dependency
+           runs one way only; entitlement never consults auth. Neither blocks
+           startup: both resolve in the background while the tracker is
+           already usable. */
+        <ProEntitlementProvider
+          initialDeveloperProEnabled={isDeveloperProEnabled}
+        >
+          <AuthProvider>
             <ThemeProvider value={navigationTheme}>
               <Stack
                 screenOptions={{
@@ -152,8 +155,8 @@ export default function RootLayout() {
                 <Stack.Screen name="export" />
               </Stack>
             </ThemeProvider>
-          </ProEntitlementProvider>
-        </AuthProvider>
+          </AuthProvider>
+        </ProEntitlementProvider>
       )}
     </SafeAreaProvider>
   )

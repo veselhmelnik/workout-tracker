@@ -36,6 +36,14 @@ type ProEntitlementContextValue = ProEntitlementState & {
   isBillingLoading: boolean
   /** No key, no store, or configuration failed. The app is Free and usable. */
   isBillingAvailable: boolean
+  /**
+   * Applies an entitlement the caller has already resolved, for flows that
+   * end in a known-final value — sign-in, which may run a syncPurchases
+   * fallback after logIn. The CustomerInfo listener would normally deliver
+   * this too, but depending on it alone would leave the UI stale if a given
+   * SDK operation did not emit, so the final value is pushed explicitly.
+   */
+  applyBillingEntitlement: (isPro: boolean) => void
 }
 
 /**
@@ -49,6 +57,7 @@ const FREE: ProEntitlementContextValue = {
   setDeveloperPro: () => {},
   isBillingLoading: false,
   isBillingAvailable: false,
+  applyBillingEntitlement: () => {},
 }
 
 const ProEntitlementContext = createContext<ProEntitlementContextValue>(FREE)
@@ -141,6 +150,12 @@ export function ProEntitlementProvider({
     }
   }, [])
 
+  const applyBillingEntitlement = useCallback((isPro: boolean) => {
+    setBillingPro(isPro)
+    // A caller that resolved entitlement has, by definition, reached billing.
+    setIsBillingLoading(false)
+  }, [])
+
   const setDeveloperPro = useCallback((enabled: boolean) => {
     if (!__DEV__) {
       return
@@ -172,8 +187,10 @@ export function ProEntitlementProvider({
       setDeveloperPro,
       isBillingLoading,
       isBillingAvailable,
+      applyBillingEntitlement,
     }
   }, [
+    applyBillingEntitlement,
     billingPro,
     developerProEnabled,
     isBillingAvailable,

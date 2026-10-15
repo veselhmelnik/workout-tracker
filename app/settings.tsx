@@ -30,10 +30,8 @@ import {
 } from 'react-native'
 import { SafeAreaView } from 'react-native-safe-area-context'
 
-/** Future Pro capabilities surfaced here; both are entitlement-only so far. */
 const DATA_FEATURES: ProFeature[] = ['backup_sync', 'export']
 
-/** Opens the hosted policy in the in-app browser; failures stay on Settings. */
 async function openPrivacyPolicy() {
   try {
     await WebBrowser.openBrowserAsync(PRIVACY_POLICY_URL)
@@ -48,17 +46,9 @@ async function openPrivacyPolicy() {
 type ProDataRowProps = {
   feature: ProFeature
   onLockedPress: (feature: ProFeature) => void
-  /** Where an entitled user goes; omitted while the feature is unbuilt. */
   onOpen?: () => void
 }
 
-/**
- * Entitlement and availability are separate concerns, and the row reflects
- * both. Without Pro it is locked and opens the upsell. With Pro it either
- * opens the feature, or — if the feature is not built yet — sits inert with
- * "Coming soon" rather than a Pro badge that would misstate why it does
- * nothing.
- */
 function ProDataRow({ feature, onLockedPress, onOpen }: ProDataRowProps) {
   const hasAccess = useProFeature(feature)
   const copy = PRO_FEATURE_COPY[feature]
@@ -104,17 +94,12 @@ function ProDataRow({ feature, onLockedPress, onOpen }: ProDataRowProps) {
   )
 }
 
-/**
- * Account is independent of Pro: a signed-in user may be free, and a Pro user
- * need not have an account. The two sections never read each other's state.
- */
 function AccountSection() {
   const { state, isAvailable, isBusy, signInWithGoogle, signOut } = useAuth()
 
   const handleSignIn = async () => {
     const outcome = await signInWithGoogle()
 
-    // Backing out of the Google sheet is ordinary; no alert for it.
     if (outcome.status === 'failed') {
       Alert.alert('Could not sign in', outcome.message)
     }
@@ -215,9 +200,12 @@ function AccountSection() {
 
 export default function SettingsScreen() {
   const router = useRouter()
-
   const [upsellFeature, setUpsellFeature] = useState<ProFeature | null>(null)
-
+  const {
+    state: authState,
+    isAvailable: isAuthAvailable,
+    signInWithGoogle,
+  } = useAuth()
   const { isPro, isBillingAvailable, developerProEnabled, setDeveloperPro } =
     useProEntitlement()
 
@@ -225,21 +213,51 @@ export default function SettingsScreen() {
 
   const version = Constants.expoConfig?.version ?? null
 
-  /** Explicit user action only; nothing restores on startup. */
   const handleRestore = async () => {
     if (isRestoring) {
+      return
+    }
+
+    if (authState.status !== 'authenticated') {
+      if (!isAuthAvailable) {
+        Alert.alert(
+          'Sign-in unavailable',
+          'Setline could not start sign-in right now. You can keep using the Free version and try again later.',
+        )
+
+        return
+      }
+
+      const signIn = await signInWithGoogle()
+
+      if (signIn.status === 'cancelled') {
+        return
+      }
+
+      if (signIn.status === 'failed') {
+        Alert.alert('Could not sign in', signIn.message)
+
+        return
+      }
       return
     }
 
     setIsRestoring(true)
 
     try {
-      const outcome = await restorePurchases()
+      const outcome = await restorePurchases(authState.user.id)
 
       if (outcome.status === 'entitled') {
-        // The provider's listener has already unlocked Pro; this row will
-        // re-render as Active on its own.
         Alert.alert('Setline Pro', 'Your purchase has been restored.')
+
+        return
+      }
+
+      if (outcome.status === 'identity_mismatch') {
+        Alert.alert(
+          'Restore Purchases',
+          'Your account is signed in, but billing is not linked to it yet. Please try again.',
+        )
 
         return
       }
@@ -275,8 +293,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Upgrade and Restore are only useful without Pro; no subscription
-            management here yet, so an active subscriber sees just the status. */}
         {!isPro ? (
           <>
             <Pressable
@@ -327,7 +343,6 @@ export default function SettingsScreen() {
             feature={feature}
             key={feature}
             onLockedPress={setUpsellFeature}
-            // Export is built; Backup & Sync is not, so it stays inert.
             onOpen={
               feature === 'export' ? () => router.push('/export') : undefined
             }
@@ -370,9 +385,6 @@ export default function SettingsScreen() {
           </View>
         ) : null}
 
-        {/* __DEV__ is a compile-time constant, so this section and its state
-            are stripped from a production bundle entirely. Until billing
-            exists it is the only way to reach the Pro state. */}
         {__DEV__ ? (
           <>
             <Text style={styles.sectionLabel}>Developer</Text>

@@ -150,6 +150,42 @@ export async function revokeSession(
 }
 
 /**
+ * In-flight refresh, shared by every caller that needs one.
+ *
+ * Refresh tokens are single-use and rotated, so two requests that get a 401
+ * at the same time must not each exchange the same token: the first rotation
+ * revokes it, the second presentation is rejected as invalid, and a perfectly
+ * good session looks dead. One refresh runs; the rest await it and retry with
+ * the access token it produced.
+ */
+let refreshInFlight: Promise<ApiResult<AuthSession>> | null = null
+
+function refreshOnce(
+  refreshToken: string,
+  onTokens: (tokens: AuthTokens) => void,
+): Promise<ApiResult<AuthSession>> {
+  refreshInFlight ??= (async () => {
+    const result = await refreshSession(refreshToken)
+
+    if (result.ok) {
+      accessToken = result.value.tokens.accessToken
+
+      // Inside the shared call, so the rotated token is persisted exactly
+      // once however many requests were waiting.
+      onTokens(result.value.tokens)
+    }
+
+    return result
+  })().finally(() => {
+    // Cleared on settle, so a later 401 can refresh again rather than
+    // replaying this result forever.
+    refreshInFlight = null
+  })
+
+  return refreshInFlight
+}
+
+/**
  * Authenticated request wrapper for future features — Cloud Backup will call
  * this rather than fetch.
  *
@@ -184,14 +220,11 @@ export async function authenticatedRequest<T>(
     return first
   }
 
-  const refreshed = await refreshSession(storedRefreshToken)
+  const refreshed = await refreshOnce(storedRefreshToken, onTokens)
 
   if (!refreshed.ok) {
     return { ok: false, failure: refreshed.failure }
   }
-
-  accessToken = refreshed.value.tokens.accessToken
-  onTokens(refreshed.value.tokens)
 
   // Single retry only.
   return attempt()

@@ -18,35 +18,59 @@ import {
   Text,
   View,
 } from 'react-native'
+import { useAuth } from '../auth/AuthProvider'
 
 type ProUpsellSheetProps = {
-  /** The feature that was blocked; null closes the sheet. */
   feature: ProFeature | null
   onClose: () => void
 }
 
-/**
- * The one Pro explanation surface, reused by every gated entry point. It takes
- * a feature rather than free-standing copy, so each feature reads the same
- * wherever it was blocked.
- *
- * RevenueCat supplies only the plans, their localized prices and the purchase
- * result. Feature marketing stays in PRO_FEATURE_COPY, so what the sheet says
- * about a feature does not depend on how it is sold.
- */
 export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
   const { isPro, isBillingAvailable } = useProEntitlement()
+  const {
+    state: authState,
+    isAvailable: isAuthAvailable,
+    signInWithGoogle,
+  } = useAuth()
 
+  const isAuthenticated = authState.status === 'authenticated'
+  const isAuthLoading = authState.status === 'loading'
   const [plans, setPlans] = useState<BillingPlan[] | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [isWorking, setIsWorking] = useState(false)
 
-  // Guards against a second tap landing before isWorking has re-rendered.
   const inFlightRef = useRef(false)
 
   const isOpen = feature !== null
   const copy = feature ? PRO_FEATURE_COPY[feature] : null
+  const requireAuthentication = async (): Promise<boolean> => {
+    if (authState.status === 'authenticated') {
+      return true
+    }
 
+    if (!isAuthAvailable) {
+      Alert.alert(
+        'Sign-in unavailable',
+        'Setline could not start sign-in right now. You can keep using the Free version and try again later.',
+      )
+
+      return false
+    }
+
+    const outcome = await signInWithGoogle()
+
+    if (outcome.status === 'cancelled') {
+      return false
+    }
+
+    if (outcome.status === 'failed') {
+      Alert.alert('Could not sign in', outcome.message)
+
+      return false
+    }
+
+    return false
+  }
   useEffect(() => {
     if (!isOpen || !isBillingAvailable) {
       return
@@ -61,7 +85,6 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
 
       setPlans(loaded)
 
-      // Annual is first and pre-selected; the user can still choose monthly.
       setSelectedId((current) => current ?? loaded[0]?.id ?? null)
     })
 
@@ -70,8 +93,6 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
     }
   }, [isBillingAvailable, isOpen])
 
-  // The purchase that unlocked the feature also closes the sheet. The blocked
-  // action is not run automatically — the user taps it again deliberately.
   useEffect(() => {
     if (isOpen && isPro) {
       onClose()
@@ -102,17 +123,27 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
     }
 
     run(async () => {
-      const outcome = await purchasePlan(plan)
+      if (authState.status !== 'authenticated') {
+        await requireAuthentication()
+        return
+      }
 
-      // Backing out of the store sheet is ordinary: no alert, the sheet stays
-      // open and usable.
+      const outcome = await purchasePlan(plan, authState.user.id)
+
       if (outcome.status === 'cancelled') {
         return
       }
 
       if (outcome.status === 'entitled') {
-        // The provider's listener has already flipped isPro; the effect above
-        // closes the sheet.
+        return
+      }
+
+      if (outcome.status === 'identity_mismatch') {
+        Alert.alert(
+          'Could not start Setline Pro',
+          'Your account is signed in, but billing is not linked to it yet. Please try again.',
+        )
+
         return
       }
 
@@ -127,9 +158,23 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
 
   const handleRestore = () => {
     run(async () => {
-      const outcome = await restorePurchases()
+      if (authState.status !== 'authenticated') {
+        await requireAuthentication()
+        return
+      }
+
+      const outcome = await restorePurchases(authState.user.id)
 
       if (outcome.status === 'entitled') {
+        return
+      }
+
+      if (outcome.status === 'identity_mismatch') {
+        Alert.alert(
+          'Restore Purchases',
+          'Your account is signed in, but billing is not linked to it yet. Please try again.',
+        )
+
         return
       }
 
@@ -142,7 +187,6 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
     })
   }
 
-  // Three mutually exclusive states: loading, sellable plans, or unavailable.
   const canPurchase = isBillingAvailable && plans !== null && plans.length > 0
   const isUnavailable =
     !isBillingAvailable || (plans !== null && plans.length === 0)
@@ -159,8 +203,6 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
         </View>
       ) : null}
 
-      {/* Nothing is drawn until real plans arrive, so no placeholder price can
-          ever be mistaken for an offer. */}
       {isBillingAvailable && plans === null ? (
         <View style={styles.loading}>
           <ActivityIndicator color={colors.textSecondary} />
@@ -188,7 +230,6 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
                   ]}
                 >
                   <Text style={styles.planPeriod}>{planLabel(plan)}</Text>
-                  {/* Store-localized; the app never formats a price itself. */}
                   <Text style={styles.planPrice}>{plan.priceString}</Text>
                 </Pressable>
               )
@@ -196,10 +237,16 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
           </View>
 
           <View style={styles.action}>
+            {!isAuthenticated && !isAuthLoading ? (
+              <Text style={styles.signInNote}>
+                Sign in before purchasing Setline Pro. Your subscription will be
+                linked to your Setline account.
+              </Text>
+            ) : null}
             <Button
               busy={isWorking}
-              disabled={selectedId === null}
-              label="Continue"
+              disabled={selectedId === null || isAuthLoading}
+              label={isAuthenticated ? 'Continue' : 'Sign in to Continue'}
               onPress={handlePurchase}
             />
           </View>
@@ -215,8 +262,6 @@ export function ProUpsellSheet({ feature, onClose }: ProUpsellSheetProps) {
         </>
       ) : null}
 
-      {/* No key, no store, or an offering with nothing sellable in it. The
-          feature copy above still explains what Pro is. */}
       {isUnavailable ? (
         <>
           <Text style={styles.availability}>
@@ -291,7 +336,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
   },
 
-  // Selection reads as a lifted border, keeping amber for session state.
   planSelected: {
     backgroundColor: colors.raised,
     borderColor: colors.borderStrong,
@@ -316,7 +360,7 @@ const styles = StyleSheet.create({
   },
 
   action: {
-    marginTop: spacing.lg,
+    marginTop: spacing.md,
   },
 
   restore: {
@@ -334,5 +378,11 @@ const styles = StyleSheet.create({
 
   pressed: {
     opacity: 0.6,
+  },
+  signInNote: {
+    color: colors.textMuted,
+    fontSize: 12.5,
+    lineHeight: 19,
+    marginTop: spacing.lg,
   },
 })

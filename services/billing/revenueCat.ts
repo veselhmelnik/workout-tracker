@@ -4,52 +4,35 @@ import Purchases, {
   type CustomerInfo,
   type CustomerInfoUpdateListener,
   type PurchasesPackage,
-} from 'react-native-purchases'
-import { selectBillingKey } from './revenueCatKeys'
+} from 'react-native-purchases';
+import { selectBillingKey } from './revenueCatKeys';
 
-/**
- * The only module in the app that imports react-native-purchases, besides the
- * entitlement provider that consumes it. Screens and components go through
- * useProFeature, never through this file or the SDK.
- *
- * Everything here answers to the entitlement identifier below. Products and
- * packages sell access; the entitlement is what grants it, so a package
- * identifier is never used to decide whether someone is Pro.
- */
 const ENTITLEMENT_ID = 'setline_pro'
 
 export type BillingAvailability =
   | { status: 'ready' }
   | { status: 'unavailable'; reason: string }
 
-/** A purchasable plan, already reduced to what the upsell needs to draw. */
 export type BillingPlan = {
-  /** RevenueCat package identifier, e.g. $rc_annual. Not shown to the user. */
   id: string
   period: 'annual' | 'monthly'
-  /** Store-localized, already formatted in the user's currency. */
   priceString: string
-  /** Kept so the purchase call receives the exact object the SDK returned. */
   package: PurchasesPackage
 }
 
 export type PurchaseOutcome =
   | { status: 'entitled' }
-  /** Charged, but the entitlement did not come back active. */
   | { status: 'not_entitled' }
   | { status: 'cancelled' }
+  | { status: 'identity_mismatch' }
   | { status: 'failed'; message: string }
 
 export type RestoreOutcome =
   | { status: 'entitled' }
   | { status: 'not_entitled' }
+  | { status: 'identity_mismatch' }
   | { status: 'failed'; message: string }
 
-/**
- * Single-flight configuration. Held at module scope so a remount, Fast Refresh
- * or a second provider mount reuses the same result instead of calling
- * Purchases.configure again.
- */
 let configuration: Promise<BillingAvailability> | null = null
 
 export function initializeBilling(): Promise<BillingAvailability> {
@@ -57,8 +40,6 @@ export function initializeBilling(): Promise<BillingAvailability> {
     const key = selectBillingKey()
 
     if (key.status === 'unavailable') {
-      // Not an error: the app runs Free and the development override still
-      // works. Logged once, quietly, so a missing key is diagnosable.
       if (__DEV__) {
         console.info(`[billing] unavailable — ${key.reason}`)
       }
@@ -70,15 +51,10 @@ export function initializeBilling(): Promise<BillingAvailability> {
       if (__DEV__) {
         await Purchases.setLogLevel(LOG_LEVEL.DEBUG)
       }
-
-      // No appUserID: RevenueCat manages an anonymous App User ID. Setline has
-      // no accounts, so nothing is generated or persisted here. Adding
-      // Purchases.logIn(...) later needs no change to any caller.
       Purchases.configure({ apiKey: key.apiKey })
 
       return { status: 'ready' }
     } catch (error) {
-      // Let a later attempt retry rather than caching a transient failure.
       configuration = null
 
       return {
@@ -91,24 +67,55 @@ export function initializeBilling(): Promise<BillingAvailability> {
   return configuration
 }
 
-/**
- * Links purchases to a Setline account.
- *
- * Called after sign-in with Setline's own user UUID — never a Google subject
- * or an email. RevenueCat handles the anonymous-to-identified transition
- * itself, so a Pro purchase made before signing in carries over; the app does
- * not try to migrate entitlements by hand.
- *
- * Returns the resulting entitlement so the caller can update state without
- * waiting for the listener.
- */
+export type IdentifyBillingOptions = {
+  syncAnonymousPurchaseIfLost: boolean
+}
+
 export async function identifyBillingUser(
   appUserId: string,
+  options: IdentifyBillingOptions,
 ): Promise<boolean | null> {
   try {
-    const { customerInfo } = await Purchases.logIn(appUserId)
+    const before = await Purchases.getCustomerInfo()
+    const hadProBefore = hasProEntitlement(before)
 
-    return hasProEntitlement(customerInfo)
+    logIdentity('before logIn', before.originalAppUserId, hadProBefore)
+
+    const { customerInfo, created } = await Purchases.logIn(appUserId)
+
+    let hasPro = hasProEntitlement(customerInfo)
+
+    logIdentity(
+      `after logIn (created=${created})`,
+      customerInfo.originalAppUserId,
+      hasPro,
+    )
+
+    const lostProOnLogin = hadProBefore && !hasPro
+
+    if (!options.syncAnonymousPurchaseIfLost || !lostProOnLogin) {
+      return hasPro
+    }
+
+    if (__DEV__) {
+      console.info('[billing] syncPurchases fallback triggered')
+    }
+
+    try {
+      const synced = await Purchases.syncPurchasesForResult()
+
+      hasPro = hasProEntitlement(synced.customerInfo)
+
+      logIdentity(
+        'after syncPurchases',
+        synced.customerInfo.originalAppUserId,
+        hasPro,
+      )
+    } catch (error) {
+      logDeveloperError('syncPurchases', error)
+    }
+
+    return hasPro
   } catch (error) {
     logDeveloperError('logIn', error)
 
@@ -116,10 +123,14 @@ export async function identifyBillingUser(
   }
 }
 
-/**
- * Returns RevenueCat to an anonymous identity on sign-out. RevenueCat
- * generates the new anonymous App User ID itself; nothing is fabricated here.
- */
+function logIdentity(stage: string, appUserId: string, isPro: boolean): void {
+  if (__DEV__) {
+    console.info(
+      `[billing] ${stage}: appUserId=${appUserId} setline_pro=${isPro}`,
+    )
+  }
+}
+
 export async function resetBillingUser(): Promise<boolean | null> {
   try {
     const customerInfo = await Purchases.logOut()
@@ -132,16 +143,10 @@ export async function resetBillingUser(): Promise<boolean | null> {
   }
 }
 
-/** True when the customer currently holds setline_pro. */
 export function hasProEntitlement(customerInfo: CustomerInfo): boolean {
   return customerInfo.entitlements.active[ENTITLEMENT_ID] !== undefined
 }
 
-/**
- * Current entitlement state. RevenueCat serves its own cached CustomerInfo
- * when offline, so this is not a network dependency; the app does no receipt
- * parsing or expiry arithmetic of its own.
- */
 export async function getCustomerInfo(): Promise<CustomerInfo | null> {
   try {
     return await Purchases.getCustomerInfo()
@@ -162,13 +167,6 @@ export function subscribeToCustomerInfo(
   }
 }
 
-/**
- * Plans from the current offering, annual first.
- *
- * Reads offerings.current rather than the literal "default" identifier, so
- * changing the active offering in the RevenueCat dashboard needs no release.
- * Packages are identified by packageType, not by raw store product ids.
- */
 export async function getCurrentPlans(): Promise<BillingPlan[]> {
   try {
     const offerings = await Purchases.getOfferings()
@@ -198,29 +196,54 @@ function toPlan(entry: PurchasesPackage): BillingPlan | null {
         : null
 
   if (!period) {
-    // The offering only sells these two today; anything else is ignored
-    // rather than guessed at.
     return null
   }
 
   return {
     id: entry.identifier,
     period,
-    // Store-localized and already formatted; the app never builds a price
-    // string or assumes a currency.
     priceString: entry.product.priceString,
     package: entry,
   }
 }
 
+async function isBillingUserIdentifiedAs(expectedAppUserId: string): Promise<boolean> {
+  try {
+    const currentAppUserId = await Purchases.getAppUserID()
+
+    const matches = currentAppUserId === expectedAppUserId
+
+    if (__DEV__ && !matches) {
+      console.info(`[billing] purchase blocked: expected=${expectedAppUserId} actual=${currentAppUserId}`,)
+    }
+
+    return matches
+  } catch (error) {
+    logDeveloperError('getAppUserID', error)
+  }
+
+  return false
+}
+
 export async function purchasePlan(
   plan: BillingPlan,
+  authenticatedUserId: string,
 ): Promise<PurchaseOutcome> {
+  const identified = await isBillingUserIdentifiedAs(authenticatedUserId)
+
+  if (!identified) {
+    return { status: 'identity_mismatch' }
+  }
+
   try {
+    if (__DEV__) {
+      console.info(
+        `[billing] purchase started as authenticated user ${authenticatedUserId}`,
+      )
+    }
+
     const { customerInfo } = await Purchases.purchasePackage(plan.package)
 
-    // A completed purchase call is not the same as an active entitlement, so
-    // access follows the entitlement, never the call returning.
     return hasProEntitlement(customerInfo)
       ? { status: 'entitled' }
       : { status: 'not_entitled' }
@@ -235,8 +258,15 @@ export async function purchasePlan(
   }
 }
 
-/** Only ever called from an explicit user action, never on startup. */
-export async function restorePurchases(): Promise<RestoreOutcome> {
+export async function restorePurchases(
+  authenticatedUserId: string,
+): Promise<RestoreOutcome> {
+  const identified = await isBillingUserIdentifiedAs(authenticatedUserId)
+
+  if (!identified) {
+    return { status: 'identity_mismatch' }
+  }
+
   try {
     const customerInfo = await Purchases.restorePurchases()
 
@@ -250,10 +280,6 @@ export async function restorePurchases(): Promise<RestoreOutcome> {
   }
 }
 
-/**
- * Backing out of the store sheet is ordinary behaviour, not a failure: it
- * raises no alert and logs nothing.
- */
 function isUserCancelled(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -276,7 +302,6 @@ function friendlyMessage(error: unknown): string {
   return 'Something went wrong. Please try again.'
 }
 
-/** Detail stays in development; release builds log nothing from billing. */
 function logDeveloperError(operation: string, error: unknown): void {
   if (__DEV__) {
     console.warn(`[billing] ${operation} failed`, error)
