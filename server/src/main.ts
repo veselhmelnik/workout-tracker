@@ -1,10 +1,11 @@
 import { ValidationPipe } from '@nestjs/common'
 import { NestFactory } from '@nestjs/core'
+import { json } from 'express'
 import { AppModule } from './app.module'
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule)
-
+  const app = await NestFactory.create(AppModule, { bodyParser: false })
+  app.use(json({ limit: '22mb' }))
   app.useGlobalPipes(
     new ValidationPipe({
       // Strips anything not on the DTO, so a client cannot smuggle extra
